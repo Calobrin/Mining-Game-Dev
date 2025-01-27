@@ -1,0 +1,52 @@
+[gd_scene load_steps=8 format=3 uid="uid://cfcx4nltl7bem"]
+
+[ext_resource type="PackedScene" uid="uid://dbkh65ymg3hyp" path="res://blender models/MG Town.glb" id="1_ygyvx"]
+[ext_resource type="PackedScene" uid="uid://idpgh2bb3r0t" path="res://Scenes/playernew.tscn" id="2_7oduu"]
+[ext_resource type="Script" path="res://Scripts/player.gd" id="3_qiy6v"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_6kndl"]
+sky_top_color = Color(0.303568, 0.462435, 0.623066, 1)
+sky_horizon_color = Color(0.627252, 0.658767, 0.669981, 1)
+ground_bottom_color = Color(0.205442, 0.172631, 0.0568578, 1)
+ground_horizon_color = Color(0.627252, 0.658767, 0.669981, 1)
+
+[sub_resource type="Sky" id="Sky_kb4jt"]
+sky_material = SubResource("ProceduralSkyMaterial_6kndl")
+
+[sub_resource type="Environment" id="Environment_8m6yy"]
+background_mode = 2
+sky = SubResource("Sky_kb4jt")
+tonemap_mode = 2
+glow_enabled = true
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_dd6dk"]
+
+[node name="MG Town" instance=ExtResource("1_ygyvx")]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." index="0"]
+environment = SubResource("Environment_8m6yy")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." index="1"]
+transform = Transform3D(-0.955793, -0.192908, 0.221915, 0, 0.75471, 0.656059, -0.29404, 0.627057, -0.721346, 0, 0, 0)
+shadow_enabled = true
+
+[node name="House" parent="." index="20"]
+transform = Transform3D(0.766078, 0, 0.202392, 0, 1.269, 0, -0.233934, 0, 0.662787, 68.6308, 1.599, 71.6241)
+
+[node name="Player" parent="." index="23" instance=ExtResource("2_7oduu")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 73.0944, -3.40643, 61.9052)
+script = ExtResource("3_qiy6v")
+
+[node name="Camera Origin" parent="Player" index="2"]
+transform = Transform3D(-1, 0, 8.74228e-08, 0, 1, 0, -8.74228e-08, 0, -1, 0, 1.57561, 0)
+
+[node name="SpringArm3D" parent="Player/Camera Origin" index="0"]
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 0, 0)
+shape = SubResource("SphereShape3D_dd6dk")
+margin = 0.5
+script = null
+
+[node name="Camera3D" parent="Player/Camera Origin/SpringArm3D" index="0"]
+near = 0.2
+
+[editable path="Player"]
