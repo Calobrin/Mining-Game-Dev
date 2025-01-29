@@ -1,6 +1,7 @@
-[gd_scene load_steps=4 format=3 uid="uid://idpgh2bb3r0t"]
+[gd_scene load_steps=5 format=3 uid="uid://idpgh2bb3r0t"]
 
-[ext_resource type="Script" path="res://Scripts/camera_spring_arm.gd" id="1_uak0u"]
+[ext_resource type="Script" path="res://Scripts/player.gd" id="1_bsg7c"]
+[ext_resource type="Script" path="res://Scripts/camera.gd" id="1_p3q2d"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_w8qe6"]
 
@@ -8,6 +9,7 @@
 radius = 0.602241
 
 [node name="Player" type="CharacterBody3D"]
+script = ExtResource("1_bsg7c")
 
 [node name="Body Mesh" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
@@ -19,11 +21,11 @@ shape = SubResource("CapsuleShape3D_n6585")
 
 [node name="Camera Origin" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.57561, 0)
+script = ExtResource("1_p3q2d")
 
 [node name="SpringArm3D" type="SpringArm3D" parent="Camera Origin"]
 spring_length = 3.0
 margin = 1.0
-script = ExtResource("1_uak0u")
 
 [node name="Camera3D" type="Camera3D" parent="Camera Origin/SpringArm3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 3)

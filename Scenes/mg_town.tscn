@@ -1,8 +1,7 @@
-[gd_scene load_steps=8 format=3 uid="uid://cfcx4nltl7bem"]
+[gd_scene load_steps=7 format=3 uid="uid://cfcx4nltl7bem"]
 
 [ext_resource type="PackedScene" uid="uid://dbkh65ymg3hyp" path="res://blender models/MG Town.glb" id="1_ygyvx"]
 [ext_resource type="PackedScene" uid="uid://idpgh2bb3r0t" path="res://Scenes/playernew.tscn" id="2_7oduu"]
-[ext_resource type="Script" path="res://Scripts/player.gd" id="3_qiy6v"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_6kndl"]
 sky_top_color = Color(0.303568, 0.462435, 0.623066, 1)
@@ -35,7 +34,6 @@ transform = Transform3D(0.766078, 0, 0.202392, 0, 1.269, 0, -0.233934, 0, 0.6627
 
 [node name="Player" parent="." index="23" instance=ExtResource("2_7oduu")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 73.0944, -3.40643, 61.9052)
-script = ExtResource("3_qiy6v")
 
 [node name="Camera Origin" parent="Player" index="2"]
 transform = Transform3D(-1, 0, 8.74228e-08, 0, 1, 0, -8.74228e-08, 0, -1, 0, 1.57561, 0)
@@ -44,7 +42,6 @@ transform = Transform3D(-1, 0, 8.74228e-08, 0, 1, 0, -8.74228e-08, 0, -1, 0, 1.5
 transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 0, 0)
 shape = SubResource("SphereShape3D_dd6dk")
 margin = 0.5
-script = null
 
 [node name="Camera3D" parent="Player/Camera Origin/SpringArm3D" index="0"]
 near = 0.2
