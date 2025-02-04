@@ -1,8 +1,18 @@
+<<<<<<< Updated upstream
 [gd_scene load_steps=8 format=3 uid="uid://cfcx4nltl7bem"]
 
 [ext_resource type="PackedScene" uid="uid://dbkh65ymg3hyp" path="res://blender models/MG Town.glb" id="1_ygyvx"]
 [ext_resource type="PackedScene" uid="uid://idpgh2bb3r0t" path="res://Scenes/playernew.tscn" id="2_7oduu"]
 [ext_resource type="Script" path="res://Scripts/player.gd" id="3_qiy6v"]
+=======
+[gd_scene load_steps=11 format=3 uid="uid://cfcx4nltl7bem"]
+
+[ext_resource type="PackedScene" uid="uid://dbkh65ymg3hyp" path="res://blender models/MG Town.glb" id="1_ygyvx"]
+[ext_resource type="PackedScene" uid="uid://idpgh2bb3r0t" path="res://Scenes/playernew.tscn" id="2_7oduu"]
+[ext_resource type="Script" path="res://Scripts/TownSceneScript.gd" id="2_14fw5"]
+[ext_resource type="PackedScene" uid="uid://b4x11wc33w26x" path="res://Scenes/interactable_button.tscn" id="3_um32k"]
+[ext_resource type="PackedScene" uid="uid://ntn7tba50ogf" path="res://Scenes/spawnpoint.tscn" id="4_pg0md"]
+>>>>>>> Stashed changes
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_6kndl"]
 sky_top_color = Color(0.303568, 0.462435, 0.623066, 1)
@@ -10,18 +20,23 @@ sky_horizon_color = Color(0.627252, 0.658767, 0.669981, 1)
 ground_bottom_color = Color(0.205442, 0.172631, 0.0568578, 1)
 ground_horizon_color = Color(0.627252, 0.658767, 0.669981, 1)
 
-[sub_resource type="Sky" id="Sky_kb4jt"]
+[sub_resource type="Sky" id="Sky_lbnfe"]
 sky_material = SubResource("ProceduralSkyMaterial_6kndl")
 
 [sub_resource type="Environment" id="Environment_8m6yy"]
 background_mode = 2
-sky = SubResource("Sky_kb4jt")
+sky = SubResource("Sky_lbnfe")
 tonemap_mode = 2
 glow_enabled = true
 
-[sub_resource type="SphereShape3D" id="SphereShape3D_dd6dk"]
+[sub_resource type="BoxShape3D" id="BoxShape3D_hsu4u"]
+size = Vector3(1.73376, 6.46427, 0.506508)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_rb5v6"]
+size = Vector3(0.165039, 5.94825, 1.50256)
 
 [node name="MG Town" instance=ExtResource("1_ygyvx")]
+script = ExtResource("2_14fw5")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." index="0"]
 environment = SubResource("Environment_8m6yy")
@@ -30,23 +45,57 @@ environment = SubResource("Environment_8m6yy")
 transform = Transform3D(-0.955793, -0.192908, 0.221915, 0, 0.75471, 0.656059, -0.29404, 0.627057, -0.721346, 0, 0, 0)
 shadow_enabled = true
 
+[node name="Boulder Cliff Collision" type="StaticBody3D" parent="Mine Town Terrain" index="1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 18.2269, 0, 18.1592)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Mine Town Terrain/Boulder Cliff Collision" index="0"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0896606, 2.07734, -0.118168)
+shape = SubResource("BoxShape3D_hsu4u")
+
+[node name="Boulder" parent="." index="3"]
+transform = Transform3D(5.35, 0, 0, 0, 1.07, 0, 0, 0, 5.85714, 88.9987, 2.28093, 94.7919)
+
+[node name="Tunnel Blocker" type="StaticBody3D" parent="Mine Hub" index="1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.85836, -2.8247, -0.0856056)
+
+[node name="Tunnel Blocker collision" type="CollisionShape3D" parent="Mine Hub/Tunnel Blocker" index="0"]
+shape = SubResource("BoxShape3D_rb5v6")
+
+[node name="Tunnel Blocker2" type="StaticBody3D" parent="Mine Hub" index="2"]
+transform = Transform3D(-0.199233, 0.000553248, 0.979952, 0.000917397, 1, -0.000378054, -0.979951, 0.000823686, -0.199233, 0.944439, -3.7014, 4.14875)
+
+[node name="Tunnel Blocker collision" type="CollisionShape3D" parent="Mine Hub/Tunnel Blocker2" index="0"]
+transform = Transform3D(1.3, 0, 0, 0, 1.3, 0, 0, 0, 1.3, 0, 0, 0)
+shape = SubResource("BoxShape3D_rb5v6")
+
 [node name="House" parent="." index="20"]
 transform = Transform3D(0.766078, 0, 0.202392, 0, 1.269, 0, -0.233934, 0, 0.662787, 68.6308, 1.599, 71.6241)
 
+<<<<<<< Updated upstream
 [node name="Player" parent="." index="23" instance=ExtResource("2_7oduu")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 73.0944, -3.40643, 61.9052)
 script = ExtResource("3_qiy6v")
+=======
+[node name="Interactable Button" parent="." index="23" instance=ExtResource("3_um32k")]
+transform = Transform3D(-4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, 32.9745, -20.2812, 37.273)
+>>>>>>> Stashed changes
 
-[node name="Camera Origin" parent="Player" index="2"]
-transform = Transform3D(-1, 0, 8.74228e-08, 0, 1, 0, -8.74228e-08, 0, -1, 0, 1.57561, 0)
+[node name="Interactable Area" parent="Interactable Button/Sprite Icon" index="1"]
+current_scene = "Town"
 
+<<<<<<< Updated upstream
 [node name="SpringArm3D" parent="Player/Camera Origin" index="0"]
 transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 0, 0)
 shape = SubResource("SphereShape3D_dd6dk")
 margin = 0.5
 script = null
+=======
+[node name="Player" parent="." index="24" instance=ExtResource("2_7oduu")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 39.138, -18.4933, 51.1882)
+>>>>>>> Stashed changes
 
-[node name="Camera3D" parent="Player/Camera Origin/SpringArm3D" index="0"]
-near = 0.2
+[node name="Spawnpoint" parent="." index="25" instance=ExtResource("4_pg0md")]
+transform = Transform3D(-4.37114e-08, 0, -1, 0, 1, 0, 1, 0, -4.37114e-08, 36.3003, -20.6209, 37.2464)
+spawn_name = "Mines_to_Town"
 
-[editable path="Player"]
+[editable path="Interactable Button"]

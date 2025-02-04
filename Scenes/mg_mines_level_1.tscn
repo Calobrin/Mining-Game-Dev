@@ -1,0 +1,53 @@
+[gd_scene load_steps=8 format=3 uid="uid://nhitlv6mblk5"]
+
+[ext_resource type="PackedScene" uid="uid://be1llxcu1a08b" path="res://blender models/Mines level 1.glb" id="1_roqu2"]
+[ext_resource type="PackedScene" uid="uid://idpgh2bb3r0t" path="res://Scenes/playernew.tscn" id="2_jqmv2"]
+[ext_resource type="PackedScene" uid="uid://b4x11wc33w26x" path="res://Scenes/interactable_button.tscn" id="3_16f8g"]
+[ext_resource type="PackedScene" uid="uid://ntn7tba50ogf" path="res://Scenes/spawnpoint.tscn" id="4_uratw"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_l5ael"]
+sky_top_color = Color(0.303568, 0.462435, 0.623066, 1)
+sky_horizon_color = Color(0.627252, 0.658767, 0.669981, 1)
+ground_bottom_color = Color(0.205442, 0.172631, 0.0568578, 1)
+ground_horizon_color = Color(0.627252, 0.658767, 0.669981, 1)
+
+[sub_resource type="Sky" id="Sky_kb4jt"]
+sky_material = SubResource("ProceduralSkyMaterial_l5ael")
+
+[sub_resource type="Environment" id="Environment_ahe0i"]
+background_mode = 2
+sky = SubResource("Sky_kb4jt")
+tonemap_mode = 2
+glow_enabled = true
+
+[node name="Mines level 1" instance=ExtResource("1_roqu2")]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." index="0"]
+environment = SubResource("Environment_ahe0i")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." index="1"]
+transform = Transform3D(-0.955793, -0.192908, 0.221915, 0, 0.75471, 0.656059, -0.29404, 0.627057, -0.721346, 0, 0, 0)
+shadow_enabled = true
+
+[node name="Mines level 1" parent="." index="2"]
+transform = Transform3D(0.413186, 0, -1.11031, 0, 0.721763, 0, 1.11031, 0, 0.413186, -8.63992, 0.146778, -20.4258)
+
+[node name="Interactable Button" parent="." index="3" instance=ExtResource("3_16f8g")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.29549, 0.14467, 0.249613)
+
+[node name="Label3D" parent="Interactable Button/Sprite Icon" index="0"]
+transform = Transform3D(2, -0.00171945, -0.00161429, 0.00172049, 2, 0.00128844, 0.00161318, -0.00128983, 2, 0, 1.12362, 0)
+text = "[E]: Return to Town"
+
+[node name="Interactable Area" parent="Interactable Button/Sprite Icon" index="1"]
+current_scene = "Mines"
+
+[node name="Player" parent="." index="4" instance=ExtResource("2_jqmv2")]
+transform = Transform3D(-4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, -2.24027, 0.144672, 0.840506)
+
+[node name="Spawnpoint" parent="." index="5" instance=ExtResource("4_uratw")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.35507, 0.311074, 0.228522)
+spawn_name = "Town_to_Mines"
+
+[editable path="Interactable Button"]
+[editable path="Player"]
