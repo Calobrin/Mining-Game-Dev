@@ -1,45 +1,39 @@
-<<<<<<< Updated upstream
-[gd_scene load_steps=4 format=3 uid="uid://idpgh2bb3r0t"]
-=======
 [gd_scene load_steps=6 format=3 uid="uid://idpgh2bb3r0t"]
->>>>>>> Stashed changes
 
-[ext_resource type="Script" path="res://Scripts/camera_spring_arm.gd" id="1_uak0u"]
-
-[sub_resource type="CapsuleMesh" id="CapsuleMesh_w8qe6"]
+[ext_resource type="Script" path="res://Scripts/player.gd" id="1_bsg7c"]
+[ext_resource type="Script" path="res://Scripts/camera.gd" id="1_p3q2d"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_n6585"]
 radius = 0.602241
 
-<<<<<<< Updated upstream
-[node name="Player" type="CharacterBody3D"]
-=======
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_w8qe6"]
+
 [sub_resource type="BoxMesh" id="BoxMesh_r571m"]
 
 [node name="Player" type="CharacterBody3D" groups=["player"]]
 script = ExtResource("1_bsg7c")
->>>>>>> Stashed changes
-
-[node name="Body Mesh" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
-mesh = SubResource("CapsuleMesh_w8qe6")
 
 [node name="Body Collision" type="CollisionShape3D" parent="."]
 transform = Transform3D(0.9676, 0, 0, 0, 0.9676, 0, 0, 0, 0.9676, 0, 1, 0)
 shape = SubResource("CapsuleShape3D_n6585")
 
+[node name="Body Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+mesh = SubResource("CapsuleMesh_w8qe6")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Body Mesh"]
+transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0.53634, -0.504388)
+mesh = SubResource("BoxMesh_r571m")
+skeleton = NodePath("../..")
+
 [node name="Camera Origin" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.57561, 0)
+script = ExtResource("1_p3q2d")
 
 [node name="SpringArm3D" type="SpringArm3D" parent="Camera Origin"]
 spring_length = 3.0
 margin = 1.0
-script = ExtResource("1_uak0u")
 
 [node name="Camera3D" type="Camera3D" parent="Camera Origin/SpringArm3D"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 3)
 near = 1.0
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-transform = Transform3D(0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 1.53634, -0.504388)
-mesh = SubResource("BoxMesh_r571m")

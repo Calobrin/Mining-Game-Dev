@@ -23,6 +23,7 @@ func _on_body_exited(body):
 func _input(event):
 	if player_nearby and event.is_action_pressed("Interact"):
 		if current_scene == "Town":
+			#Global.source_scene == "Town"  # This may be needed later.
 			get_tree().change_scene_to_file("res://Scenes/mg_mines_level_1.tscn")
 			print("You entered the Mines Level 1")
 		elif current_scene == "Mines":
