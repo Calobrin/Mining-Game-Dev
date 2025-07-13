@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3 uid="uid://cvy7iljwh1a61"]
+
+[ext_resource type="Texture2D" uid="uid://d0eubdi4cjt0i" path="res://textures/image assets/Pickaxe Icon.png" id="1_w6bst"]
+[ext_resource type="Script" path="res://Scripts/mining_node.gd" id="2_jk8md"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_tylqm"]
+
+[node name="Mining Node" type="Node3D"]
+transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, 0, 0, 0)
+
+[node name="Sprite Icon" type="Sprite3D" parent="."]
+transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, 0, 0.757386, 0)
+billboard = 1
+texture = ExtResource("1_w6bst")
+
+[node name="Label3D" type="Label3D" parent="Sprite Icon"]
+transform = Transform3D(2.3504, 0, 0, 0, 2.3504, 0, 0, 0, 2.3504, 0, 1.12362, 0)
+visible = false
+billboard = 1
+text = "[E]: Begin Mining"
+font_size = 24
+
+[node name="Interactable Area" type="Area3D" parent="Sprite Icon"]
+transform = Transform3D(13.5917, 0, 0, 0, 13.5917, 0, 0, 0, 13.5917, 0, 0, 0)
+script = ExtResource("2_jk8md")
+
+[node name="Interactable Collision" type="CollisionShape3D" parent="Sprite Icon/Interactable Area"]
+transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, 0, 0, 0)
+shape = SubResource("SphereShape3D_tylqm")
