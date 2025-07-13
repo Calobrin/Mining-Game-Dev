@@ -14,7 +14,6 @@ extends Node3D
 var is_right_click_held: bool = false
 var is_left_click_held: bool = false
 var last_mouse_position: Vector2 = Vector2.ZERO
-var needs_alignment: bool = false     # Track if character needs alignment with camera
 
 # Limits for camera pitch (up/down)
 var min_pitch: float = deg_to_rad(-45)  # Looking down
@@ -80,8 +79,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Switch to right-click mode
 			is_right_click_held = true
 			
-			# Set flag to align player when movement begins
-			needs_alignment = true
+			# CRITICAL STEP: Align player to face in the direction the camera is looking
+			_align_player_to_camera()
 			
 			# Capture mouse and save position
 			last_mouse_position = get_viewport().get_mouse_position()
@@ -105,18 +104,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			is_left_click_held = false
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 			get_viewport().warp_mouse(last_mouse_position)
-
-# Check for movement input and align character when needed
-func _physics_process(_delta: float) -> void:
-	# Only check for alignment if right-click is held and alignment is needed
-	if is_right_click_held and needs_alignment:
-		# Check for movement input
-		var input_dir = Input.get_vector("Left", "Right", "Forwards", "Backwards")
-		
-		# If player is giving movement input, align character to camera
-		if input_dir != Vector2.ZERO:
-			_align_player_to_camera()
-			needs_alignment = false  # Reset flag after alignment
 
 # Align the player to the camera direction when switching from left-click to right-click
 func _align_player_to_camera() -> void:
