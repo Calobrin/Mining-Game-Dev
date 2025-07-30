@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://n7ki0t7es2tf"]
+
+[ext_resource type="Script" path="res://Scripts/mining_data_importer.gd" id="1_hcrqm"]
+
+[node name="DataManager" type="Node"]
+script = ExtResource("1_hcrqm")

@@ -1,0 +1,17 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://b2m3hx5trcowi"
+
+[deps]
+
+files=["res://data/Mining Loot Table1.2.Name.translation", "res://data/Mining Loot Table1.2.Category.translation", "res://data/Mining Loot Table1.2.Base.translation", "res://data/Mining Loot Table1.2.Base.translation", "res://data/Mining Loot Table1.2.Start.translation", "res://data/Mining Loot Table1.2.End.translation", "res://data/Mining Loot Table1.2.Mine.translation", "res://data/Mining Loot Table1.2.Flavor.translation"]
+
+source_file="res://data/Mining Loot Table1.2.csv"
+dest_files=["res://data/Mining Loot Table1.2.Name.translation", "res://data/Mining Loot Table1.2.Category.translation", "res://data/Mining Loot Table1.2.Base.translation", "res://data/Mining Loot Table1.2.Base.translation", "res://data/Mining Loot Table1.2.Start.translation", "res://data/Mining Loot Table1.2.End.translation", "res://data/Mining Loot Table1.2.Mine.translation", "res://data/Mining Loot Table1.2.Flavor.translation"]
+
+[params]
+
+compress=true
+delimiter=0
