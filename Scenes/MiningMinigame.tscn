@@ -13,9 +13,9 @@ color = Color(0.156863, 0.156863, 0.156863, 1)
 [node name="GridContainer" type="Control" parent="."]
 layout_mode = 3
 anchors_preset = 0
-offset_left = 112.0
-offset_top = 50.0
-offset_right = 912.0
+offset_left = 225.0
+offset_top = 54.0
+offset_right = 814.0
 offset_bottom = 550.0
 
 [node name="ToolContainer" type="VBoxContainer" parent="."]
