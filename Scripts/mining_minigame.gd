@@ -1,9 +1,17 @@
-extends Node2D
+extends CanvasLayer
+
 
 # Grid properties
-const GRID_SIZE = Vector2i(13, 10)  # 13x10 grid
-const CELL_SIZE = Vector2(48, 48)   # Size of each cell in pixels (adjusted for better visibility)
-const SPACING = 2                   # Space between cells
+const GRID_SIZE = Vector2i(17, 10)  # 10x10 grid				# No space between cells - continuous terrain
+
+# Use fixed or dynamic cell size
+@export var use_fixed_cell_size: bool = true		# Set to false for dynamic sizing based on container
+@export var fixed_cell_size: Vector2 = Vector2(50, 50)	# Size of each cell in pixels when using fixed sizing
+
+# Overlay dimensions (automatically calculated based on screen size)
+@export_range(0.5, 0.9, 0.05) var overlay_width_percentage: float = 0.85  # Percentage of screen width
+@export_range(0.5, 0.9, 0.05) var overlay_height_percentage: float = 0.8  # Percentage of screen height
+@export var min_cell_size: Vector2 = Vector2(30, 30)  # Minimum cell size to ensure visibility
 
 # Layer types
 enum LayerType { STONE, DIRT, TREASURE, EMPTY }
@@ -18,6 +26,19 @@ var current_durability = 0  # Will be set to max_durability in start_game()
 var game_over = false
 var grid = []  # Stores the terrain data
 var treasures = []  # Stores the treasure locations and types
+
+# Dev mode for testing
+@export var dev_mode_unlimited_durability: bool = false  # Toggle in inspector for unlimited durability
+
+# Treasure generation settings
+@export_range(2, 5, 1) var min_treasures: int = 3  # Minimum treasures per game
+@export_range(6, 15, 1) var max_treasures: int = 10  # Maximum treasures per game
+
+# Durability cost percentages (easily adjustable for game balance)
+@export_range(0.5, 3.0, 0.1) var pickaxe_durability_cost_percent: float = 1.0  # 1% per cell
+@export_range(1.0, 5.0, 0.1) var hammer_base_cost_percent: float = 2.0  # 2% base cost for hammer
+@export_range(0.1, 1.0, 0.1) var hammer_per_cell_cost_percent: float = 0.5  # 0.5% per additional cell
+@export_range(3.0, 8.0, 0.1) var hammer_max_cost_percent: float = 5.0  # 5% maximum cost
 
 # Mining properties - dirt breaks in 1 hit, stone in 2 hits
 var pickaxe_damage = {
@@ -38,6 +59,9 @@ var treasure_nodes = []  # Stores references to the treasure UI nodes
 func _ready():
 	randomize()  # Initialize random number generator
 	
+	# Connect to window resize signals to handle resolution changes
+	get_viewport().size_changed.connect(on_viewport_resized)
+	
 	# Check for MiningItemDatabase AutoLoad
 	if get_node_or_null("/root/MiningItemDatabase") == null:
 		print("WARNING: MiningItemDatabase AutoLoad not found! Using test data fallback.")
@@ -52,8 +76,11 @@ func _ready():
 		print("MiningItemDatabase AutoLoad detected successfully!")
 		
 	# Connect tool buttons
-	$ToolContainer/PickaxeTool.pressed.connect(func(): set_current_tool(ToolType.PICKAXE))
-	$ToolContainer/HammerTool.pressed.connect(func(): set_current_tool(ToolType.HAMMER))
+	$MainContainer/ToolContainer/PickaxeTool.pressed.connect(func(): set_current_tool(ToolType.PICKAXE))
+	$MainContainer/ToolContainer/HammerTool.pressed.connect(func(): set_current_tool(ToolType.HAMMER))
+	
+	# Connect close button
+	$"MainContainer/CloseButton".pressed.connect(func(): close_minigame())
 	
 	# Start a new game (this will handle grid initialization, durability, and treasures)
 	print("DEBUG: Starting new game from _ready()...")
@@ -95,18 +122,63 @@ func init_grid():
 			})
 		grid.append(row)
 
+# Calculate overlay dimensions based on viewport size
+func get_overlay_dimensions() -> Vector2:
+	var viewport_size = get_viewport().get_visible_rect().size
+	var width = viewport_size.x * overlay_width_percentage
+	var height = viewport_size.y * overlay_height_percentage
+	return Vector2(width, height)
+
+# Calculate the offset needed to center the grid within the available space
+func get_grid_centering_offset() -> Vector2:
+	var actual_cell_size = get_actual_cell_size()
+	
+	# Calculate the total grid size
+	var total_grid_width = GRID_SIZE.x * actual_cell_size.x + (GRID_SIZE.x - 1)
+	var total_grid_height = GRID_SIZE.y * actual_cell_size.y + (GRID_SIZE.y - 1)
+	
+	# Use the overlay dimensions (which are based on viewport size) for centering
+	var overlay_dims = get_overlay_dimensions()
+	
+	# Calculate offset to center the grid within the overlay space
+	var offset_x = (overlay_dims.x - total_grid_width) / 2.0
+	var offset_y = (overlay_dims.y - total_grid_height) / 2.0
+	
+	print("Overlay dims: ", overlay_dims, " Grid size: ", Vector2(total_grid_width, total_grid_height))
+	print("Centering offset: ", Vector2(offset_x, offset_y))
+	return Vector2(offset_x, offset_y)
+
+# Calculate actual cell size based on settings and screen resolution
+func get_actual_cell_size() -> Vector2:
+	if use_fixed_cell_size:
+		# Use fixed size - guaranteed perfect squares
+		return fixed_cell_size
+	else:
+		# Dynamic sizing: calculate based on available space while maintaining square aspect ratio
+		var overlay_dims = get_overlay_dimensions()
+		
+		# Calculate the maximum square size that fits both width and height constraints
+		var max_cell_width = overlay_dims.x / GRID_SIZE.x
+		var max_cell_height = overlay_dims.y / GRID_SIZE.y
+		
+		# Use the smaller dimension to ensure squares fit in both directions
+		var cell_size = min(max_cell_width, max_cell_height)
+		
+		# Ensure we don't go below minimum size
+		cell_size = max(cell_size, min_cell_size.x)  # Use x since min_cell_size should also be square
+		
+		# Return perfect squares
+		return Vector2(cell_size, cell_size)
+
 # Create visual representation of the grid
 func create_grid_visuals():
 	cell_nodes = []
 	
-	# For better visual layout, we'll scale the grid to fit the available space better
-	var container_width = 650  # Adjusted based on the scene layout
-	var container_height = 450
+	# Get the actual cell size to use
+	var actual_cell_size = get_actual_cell_size()
 	
-	# Calculate cell size that will fit the grid nicely
-	var cell_width = (container_width - (GRID_SIZE.x - 1) * SPACING) / GRID_SIZE.x
-	var cell_height = (container_height - (GRID_SIZE.y - 1) * SPACING) / GRID_SIZE.y
-	var actual_cell_size = Vector2(cell_width, cell_height)
+	# Get the centering offset
+	var centering_offset = get_grid_centering_offset()
 	
 	# Set up rows of cells
 	for y in range(GRID_SIZE.y):
@@ -117,7 +189,14 @@ func create_grid_visuals():
 			# Create cell visual
 			var cell = ColorRect.new()
 			cell.size = actual_cell_size
-			cell.position = Vector2(x * (actual_cell_size.x + SPACING), y * (actual_cell_size.y + SPACING))
+			# Prevent the container from stretching this cell
+			cell.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+			cell.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			# Position cell with centering offset
+			cell.position = Vector2(
+				centering_offset.x + x * (actual_cell_size.x),
+				centering_offset.y + y * (actual_cell_size.y)
+			)
 			
 			# Set color based on top layer
 			var current_layer = cell_data["layers"][cell_data["current_layer"]]
@@ -128,6 +207,17 @@ func create_grid_visuals():
 				cell.color = Color(0.5, 0.5, 0.55)  # Grey for stone
 			else:
 				cell.color = Color(0.2, 0.2, 0.2)  # Dark grey for empty or treasure (not visible yet)
+			
+			# Add subtle border for visual distinction
+			var border_color = Color(0.3, 0.3, 0.3, 0.5)  # Semi-transparent dark border
+			var style_box = StyleBoxFlat.new()
+			style_box.bg_color = cell.color
+			style_box.border_width_left = 1
+			style_box.border_width_right = 1
+			style_box.border_width_top = 1
+			style_box.border_width_bottom = 1
+			style_box.border_color = border_color
+			cell.add_theme_stylebox_override("panel", style_box)
 			
 			# Make cell clickable with direct reference to coordinates
 			cell.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -144,7 +234,7 @@ func create_grid_visuals():
 					on_cell_clicked(clicked_x, clicked_y))
 			
 			# Add to scene
-			$GridContainer.add_child(cell)
+			$MainContainer/MainGameArea/GridContainer.add_child(cell)
 			row.append(cell)
 		
 		# Store the row
@@ -152,7 +242,7 @@ func create_grid_visuals():
 	
 	# Add a target reticle for aiming
 	var reticle = create_reticle()
-	$GridContainer.add_child(reticle)
+	$MainContainer/MainGameArea/GridContainer.add_child(reticle)
 
 # Create an aiming reticle that follows the mouse
 func create_reticle():
@@ -182,40 +272,68 @@ func create_reticle():
 	return reticle
 
 # Process mouse movement to update reticle position
-func _process(delta):
+func _process(_delta):
 	# Update reticle position if it exists
-	var reticle = $GridContainer.get_node_or_null("Reticle")
+	var reticle = $MainContainer/MainGameArea/GridContainer.get_node_or_null("Reticle")
 	if reticle:
-		var mouse_pos = get_local_mouse_position() - $GridContainer.position
+		var grid_container = $MainContainer/MainGameArea/GridContainer
+		# Get mouse position relative to the grid container, accounting for all UI offsets
+		var mouse_pos = grid_container.get_local_mouse_position()
 		reticle.position = mouse_pos
-	
-	# Update durability label
+
+# Update durability label
 func update_durability_label():
-	var label = $DurabilityLabel
+	var label = $"MainContainer/UI Elements/DurabilityLabel"
 	if label != null:
 		label.text = "Durability: " + str(current_durability)
 
+# Handle viewport resizing
+func on_viewport_resized():
+	# DISABLED: This function was destroying treasures when window resized
+	# The grid works fine without recreation - Godot handles UI scaling automatically
+	print("Viewport resized - resize handler disabled to preserve game state")
+	return
+
+# Handle close button press
+func on_close_button_pressed():
+	# This is where you'd add code to hide the minigame and return to the main game
+	print("Close button pressed - minigame should close")
+	# For testing only - eventually remove this line
+	visible = false
+	# In your actual implementation, you'd use something like:
+	# hide()
+	# or emit a signal that the parent can listen for
+	# emit_signal("minigame_closed")
+
 # Start a new game
 func start_game():
+	# Hide system cursor and show custom crosshair
+	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+	
 	# Reset game state
 	game_over = false
 	current_durability = max_durability
 	
 	# Clear any existing grid
-	for child in $GridContainer.get_children():
+	for child in $MainContainer/MainGameArea/GridContainer.get_children():
 		child.queue_free()
 	
 	# Initialize new grid and visuals
 	init_grid()
 	create_grid_visuals()
-	place_treasures(8)  # Placing 8 treasures for the larger grid
+	# Generate random number of treasures within the specified range
+	var treasure_count = randi_range(min_treasures, max_treasures)
+	place_treasures(treasure_count)
 	
 	# Update durability display
 	update_durability_label()
 	
+	# Initialize tool selection (highlight default pickaxe)
+	set_current_tool(current_tool)
+	
 	# Show tutorial text if desired
-	print("Mining game started! Break through stone (2 hits) to reveal dirt (1 hit), and dirt to find treasures!")
-	print("Pickaxe: Single cell | Hammer: Plus shape (+) | Grid: 13x10 | Treasures: 8")
+	print("Mining game started! Break through stone (4 hits) to reveal dirt (1 hit), and dirt to find treasures!")
+	print("Pickaxe: Single cell | Hammer: Plus shape (+) | Grid: " + str(GRID_SIZE.x) + " x " + str(GRID_SIZE.y))
 
 # Place treasures in the grid using weighted random selection
 func place_treasures(count: int):
@@ -226,20 +344,29 @@ func place_treasures(count: int):
 	
 	# Track rare gem placement to ensure some variety
 	var rare_gems_placed = 0
-	var max_rare_gems = max(1, count / 3)  # At least 1 rare gem, up to 1/3 of total
+	var max_rare_gems = max(1, float(count) / 3)  # At least 1 rare gem, up to 1/3 of total
 	
 	print("Placing " + str(count) + " treasures in mine #" + str(mine_id))
 	
-	for i in range(count):
-		# Pick a random position in the grid
-		var x = randi() % int(GRID_SIZE.x)
-		var y = randi() % int(GRID_SIZE.y)
-		
-		# Check if the bottom layer already has a treasure
-		if grid[y][x]["layers"][2]["treasure"] != null:
-			# Try again
-			i -= 1
-			continue
+	# Create a list of all available positions
+	var available_positions = []
+	for y in range(GRID_SIZE.y):
+		for x in range(GRID_SIZE.x):
+			available_positions.append(Vector2(x, y))
+	
+	# Shuffle the positions for random placement
+	available_positions.shuffle()
+	
+	# Ensure we don't try to place more treasures than available positions
+	var treasures_to_place = min(count, available_positions.size())
+	if treasures_to_place < count:
+		print("WARNING: Only placing " + str(treasures_to_place) + " treasures (grid too small for " + str(count) + ")")
+	
+	for i in range(treasures_to_place):
+		# Get the next available position
+		var pos = available_positions[i]
+		var x = int(pos.x)
+		var y = int(pos.y)
 		
 		# Get a treasure from the database
 		var treasure = null
@@ -282,19 +409,31 @@ func place_treasures(count: int):
 				"base_price": test_prices[gem_index]
 			}
 		
-		# Store treasure data in the bottom layer
-		grid[y][x]["layers"][2]["type"] = LayerType.TREASURE
-		grid[y][x]["layers"][2]["treasure"] = treasure
+		# Store treasure data in the correct layer based on structure
+		# If there's stone: Stone(0) -> Dirt(1) -> Treasure(2)
+		# If no stone: Dirt(0) -> Treasure(1)
+		var has_stone = grid[y][x]["layers"][0]["type"] == LayerType.STONE
+		var treasure_layer = 2 if has_stone else 1
+		
+		grid[y][x]["layers"][treasure_layer]["type"] = LayerType.TREASURE
+		grid[y][x]["layers"][treasure_layer]["treasure"] = treasure
+		print("DEBUG: Placed treasure at layer " + str(treasure_layer) + " (has_stone: " + str(has_stone) + ")")
+		print("DEBUG: Placed treasure '" + get_treasure_name(treasure) + "' at position (" + str(x) + ", " + str(y) + ")")
 		
 		# Create a visual representation for the treasure (hidden initially)
 		var treasure_visual = create_treasure_visual(treasure, x, y)
 		treasure_visual.modulate.a = 0  # Start invisible
-		$GridContainer.add_child(treasure_visual)
+		print("DEBUG: Created treasure visual at position: " + str(treasure_visual.position) + " size: " + str(treasure_visual.size))
+		$MainContainer/MainGameArea/GridContainer.add_child(treasure_visual)
 		treasures.append({
 			"visual": treasure_visual,
 			"grid_pos": Vector2(x, y),
 			"revealed": false
 		})
+	
+	# Confirm treasure placement
+	print("TREASURE PLACEMENT COMPLETE: " + str(treasures.size()) + " treasures placed successfully!")
+	print("Grid size: " + str(GRID_SIZE.x) + "x" + str(GRID_SIZE.y) + " = " + str(GRID_SIZE.x * GRID_SIZE.y) + " total cells")
 
 # Helper function to get treasure name safely whether it's a dictionary or object
 func get_treasure_name(treasure_data):
@@ -305,18 +444,17 @@ func get_treasure_name(treasure_data):
 
 # Create a visual for a treasure with color based on value
 func create_treasure_visual(treasure_data, grid_x, grid_y):
-	# Use the same calculation for cell size that we use in create_grid_visuals
-	var container_width = 650
-	var container_height = 450
-	var cell_width = (container_width - (GRID_SIZE.x - 1) * SPACING) / GRID_SIZE.x
-	var cell_height = (container_height - (GRID_SIZE.y - 1) * SPACING) / GRID_SIZE.y
-	var actual_cell_size = Vector2(cell_width, cell_height)
+	# Use the same cell size calculation
+	var actual_cell_size = get_actual_cell_size()
 	
 	var visual = ColorRect.new()
 	visual.size = actual_cell_size * 0.8  # Slightly smaller than the cell
+	
+	# Get centering offset to match grid positioning
+	var centering_offset = get_grid_centering_offset()
 	visual.position = Vector2(
-		grid_x * (actual_cell_size.x + SPACING) + actual_cell_size.x * 0.1,
-		grid_y * (actual_cell_size.y + SPACING) + actual_cell_size.y * 0.1
+		centering_offset.x + grid_x * (actual_cell_size.x) + actual_cell_size.x * 0.1,
+		centering_offset.y + grid_y * (actual_cell_size.y) + actual_cell_size.y * 0.1
 	)
 	
 	# Color based on treasure value
@@ -348,15 +486,42 @@ func create_treasure_visual(treasure_data, grid_x, grid_y):
 	
 	visual.color = gem_color
 	
+	# CRITICAL FIX: Disable mouse input so treasure visuals don't block grid clicks
+	visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
 	# Label with treasure name
 	var label = Label.new()
 	label.text = get_treasure_name(treasure_data)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.size = visual.size
+	# Also disable mouse input on the label
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	visual.add_child(label)
 	return visual
+
+# Helper function to check if a cell is fully revealed (at bottom layer and revealed)
+func is_cell_fully_revealed(x: int, y: int) -> bool:
+	var cell_data = grid[y][x]
+	var current_layer_index = cell_data["current_layer"]
+	var current_layer = cell_data["layers"][current_layer_index]
+	
+	# A cell is fully revealed if it's at the bottom layer (2) and that layer is revealed
+	return current_layer_index == 2 and current_layer["revealed"]
+
+# Helper function to check if a cell has damageable material (dirt or stone) in its current layer
+func can_cell_be_damaged(x: int, y: int) -> bool:
+	# Check bounds
+	if x < 0 or x >= GRID_SIZE.x or y < 0 or y >= GRID_SIZE.y:
+		return false
+	
+	var cell_data = grid[y][x]
+	var current_layer_index = cell_data["current_layer"]
+	var current_layer = cell_data["layers"][current_layer_index]
+	
+	# Can only damage if current layer is dirt or stone AND not already revealed
+	return (current_layer["type"] == LayerType.DIRT or current_layer["type"] == LayerType.STONE) and not current_layer["revealed"]
 
 # Handle cell clicking
 func on_cell_clicked(x: int, y: int):
@@ -379,36 +544,53 @@ func on_cell_clicked(x: int, y: int):
 	else:  # HAMMER
 		damage_values = hammer_damage
 	
-	# Check if any of the cells that will be affected are still unbroken
-	var will_affect_unbroken_cell = false
+	# Calculate durability cost based on actual cells that will be affected
+	var cells_that_will_be_damaged = 0
 	
-	# Check center cell
-	if not (current_layer_index == 2 and current_layer["revealed"]):
-		will_affect_unbroken_cell = true
+	# Check center cell - only count if it has damageable material
+	if can_cell_be_damaged(x, y):
+		cells_that_will_be_damaged += 1
 	
 	# For hammer, check surrounding cells too
 	if current_tool == ToolType.HAMMER:
 		# Check left cell
-		if x > 0 and not is_cell_fully_revealed(x - 1, y):
-			will_affect_unbroken_cell = true
+		if can_cell_be_damaged(x - 1, y):
+			cells_that_will_be_damaged += 1
 		# Check right cell
-		if x < GRID_SIZE.x - 1 and not is_cell_fully_revealed(x + 1, y):
-			will_affect_unbroken_cell = true
+		if can_cell_be_damaged(x + 1, y):
+			cells_that_will_be_damaged += 1
 		# Check up cell
-		if y > 0 and not is_cell_fully_revealed(x, y - 1):
-			will_affect_unbroken_cell = true
-		# Check down cell
-		if y < GRID_SIZE.y - 1 and not is_cell_fully_revealed(x, y + 1):
-			will_affect_unbroken_cell = true
+		if can_cell_be_damaged(x, y - 1):
+			cells_that_will_be_damaged += 1
+		# Check down cell 
+		if can_cell_be_damaged(x, y + 1):
+			cells_that_will_be_damaged += 1
 	
-	# Only reduce durability if we're actually breaking something
-	if will_affect_unbroken_cell:
-		if current_tool == ToolType.HAMMER:
-			current_durability -= 2
-			update_durability_label()
+	# Calculate dynamic durability cost
+	var durability_cost = 0
+	if cells_that_will_be_damaged > 0:
+		if current_tool == ToolType.PICKAXE:
+			# Pickaxe: simple percentage per cell
+			durability_cost = int(max_durability * (pickaxe_durability_cost_percent / 100.0) * cells_that_will_be_damaged)
+		else:  # HAMMER
+			# Hammer: base cost + additional cost per cell beyond the first
+			var base_cost = max_durability * (hammer_base_cost_percent / 100.0)
+			var additional_cells = max(0, cells_that_will_be_damaged - 1)
+			var additional_cost = max_durability * (hammer_per_cell_cost_percent / 100.0) * additional_cells
+			var total_cost = base_cost + additional_cost
+			
+			# Cap at maximum cost
+			var max_cost = max_durability * (hammer_max_cost_percent / 100.0)
+			durability_cost = int(min(total_cost, max_cost))
+		
+		# Apply durability cost (unless dev mode is enabled)
+		if dev_mode_unlimited_durability:
+			print("DEV MODE: Durability cost ignored (", durability_cost, " would have been spent)")
 		else:
-			current_durability -= 1
-			update_durability_label()
+			current_durability -= durability_cost
+			print("Durability cost: ", durability_cost, " (", cells_that_will_be_damaged, " cells affected)")
+		
+		update_durability_label()
 	
 	# Apply damage to cells based on tool pattern
 	# Apply damage to the center cell first
@@ -434,20 +616,13 @@ func on_cell_clicked(x: int, y: int):
 	if current_durability <= 0:
 		end_game()
 
-# Helper function to check if a cell is fully revealed (at bottom layer and revealed)
-func is_cell_fully_revealed(x: int, y: int) -> bool:
-	var cell_data = grid[y][x]
-	var current_layer_index = cell_data["current_layer"]
-	var current_layer = cell_data["layers"][current_layer_index]
-	
-	# A cell is fully revealed if it's at the bottom layer (2) and that layer is revealed
-	return current_layer_index == 2 and current_layer["revealed"]
-
 # Hit a cell with a tool, applying damage
 func hit_cell(x: int, y: int, damage_values, multiplier: float = 1.0):
 	var cell_data = grid[y][x]
 	var current_layer_index = cell_data["current_layer"]
 	var current_layer = cell_data["layers"][current_layer_index]
+	
+	print("DEBUG: Hitting cell (" + str(x) + ", " + str(y) + ") - Layer " + str(current_layer_index) + " (" + str(LayerType.keys()[current_layer["type"]]) + ")")
 	
 	# Skip if this is the bottom layer and already revealed
 	if current_layer_index == 2 and current_layer["revealed"]:
@@ -473,8 +648,10 @@ func hit_cell(x: int, y: int, damage_values, multiplier: float = 1.0):
 			cell_data["current_layer"] += 1
 			update_cell_visual(x, y)  # Update visual to show new layer
 		
-		# Check for treasure in bottom layer
-		if current_layer_index == 1 and cell_data["layers"][2]["type"] == LayerType.TREASURE:
+		# Simple treasure reveal logic: if we just advanced to a layer that contains treasure, reveal it
+		var current_layer_after_advance = cell_data["current_layer"]
+		if current_layer_after_advance < 3 and cell_data["layers"][current_layer_after_advance]["type"] == LayerType.TREASURE:
+			print("DEBUG: Found treasure at (" + str(x) + ", " + str(y) + ") at layer " + str(current_layer_after_advance) + " - revealing!")
 			reveal_treasure(x, y)
 
 # Update the visual appearance of a cell based on its durability
@@ -490,22 +667,42 @@ func update_cell_visual(x: int, y: int):
 		opacity = max(0.3, current_layer["durability"] / 100.0)  # Minimum opacity of 30%
 	
 	# Update color based on layer type
+	var new_color: Color
 	if current_layer["type"] == LayerType.DIRT:
-		cell_visual.color = Color(0.6, 0.4, 0.2, opacity)  # Brown for dirt
+		new_color = Color(0.6, 0.4, 0.2, opacity)  # Brown for dirt
 	elif current_layer["type"] == LayerType.STONE:
-		cell_visual.color = Color(0.5, 0.5, 0.55, opacity)  # Grey for stone
+		new_color = Color(0.5, 0.5, 0.55, opacity)  # Grey for stone
 	elif current_layer["type"] == LayerType.EMPTY:
-		cell_visual.color = Color(0.2, 0.2, 0.2)  # Dark grey for empty
+		new_color = Color(0.2, 0.2, 0.2)  # Dark grey for empty
 	elif current_layer["type"] == LayerType.TREASURE:
-		cell_visual.color = Color(0.8, 0.7, 0.2)  # Gold background for treasure
+		new_color = Color(0.8, 0.7, 0.2)  # Gold background for treasure
+	
+	# Update both the color property and the style box
+	cell_visual.color = new_color
+	
+	# Update the style box to maintain border with new color
+	var border_color = Color(0.3, 0.3, 0.3, 0.5)  # Semi-transparent dark border
+	var style_box = StyleBoxFlat.new()
+	style_box.bg_color = new_color
+	style_box.border_width_left = 1
+	style_box.border_width_right = 1
+	style_box.border_width_top = 1
+	style_box.border_width_bottom = 1
+	style_box.border_color = border_color
+	cell_visual.add_theme_stylebox_override("panel", style_box)
 
 # Reveal a treasure at the specified grid position
 func reveal_treasure(x: int, y: int):
 	# Find the treasure in our list
 	for treasure in treasures:
 		if treasure["grid_pos"] == Vector2(x, y):
-			# Make the treasure visible
-			treasure["visual"].modulate.a = 1.0
+			# Safety check: only access visual if it still exists
+			if treasure["visual"] != null and is_instance_valid(treasure["visual"]):
+				# Make the treasure visible
+				treasure["visual"].modulate.a = 1.0
+			else:
+				print("WARNING: Treasure visual was destroyed (likely by window resize)")
+			
 			treasure["revealed"] = true
 			
 			# Mark the bottom layer as revealed
@@ -516,17 +713,52 @@ func reveal_treasure(x: int, y: int):
 func set_current_tool(tool_type):
 	current_tool = tool_type
 	
-	# Update button visuals
-	$ToolContainer/PickaxeTool.modulate = Color(1, 1, 1, 1) if tool_type == ToolType.PICKAXE else Color(0.7, 0.7, 0.7, 1)
-	$ToolContainer/HammerTool.modulate = Color(1, 1, 1, 1) if tool_type == ToolType.HAMMER else Color(0.7, 0.7, 0.7, 1)
+	# Get references to the tool buttons with the new UI structure
+	var pickaxe_button = $MainContainer/ToolContainer/PickaxeTool
+	var hammer_button = $MainContainer/ToolContainer/HammerTool
 	
-	# Update tool description directly on the buttons
-	if tool_type == ToolType.PICKAXE:
-		$ToolContainer/PickaxeTool.text = "Pickaxe\n(single cell)"
-		$ToolContainer/HammerTool.text = "Hammer"
-	else:  # HAMMER
-		$ToolContainer/PickaxeTool.text = "Pickaxe"
-		$ToolContainer/HammerTool.text = "Hammer\n(+ shape)"
+	# Make sure buttons exist before trying to modify them
+	if pickaxe_button != null and hammer_button != null:
+		# Update button visuals with more prominent highlighting
+		if tool_type == ToolType.PICKAXE:
+			# Highlight pickaxe - bright yellow with full opacity
+			pickaxe_button.modulate = Color(1.2, 1.2, 0.4, 1)
+			# Give pickaxe focus to show the border (same as when clicked)
+			pickaxe_button.grab_focus()
+			# Dim hammer and remove focus
+			hammer_button.modulate = Color(0.6, 0.6, 0.6, 0.8)
+			hammer_button.release_focus()
+		else:
+			# Highlight hammer - bright yellow with full opacity
+			hammer_button.modulate = Color(1.2, 1.2, 0.4, 1)
+			# Give hammer focus to show the border (same as when clicked)
+			hammer_button.grab_focus()
+			# Dim pickaxe and remove focus
+			pickaxe_button.modulate = Color(0.6, 0.6, 0.6, 0.8)
+			pickaxe_button.release_focus()
+		
+		# Keep button text consistent to avoid size changes
+		pickaxe_button.text = "Pickaxe"
+		hammer_button.text = "Hammer"
+		
+		# You could add a label below the buttons to show the current tool's function instead
+		# Or use a tooltip or status bar to display which tool is active
+		
+		print("Selected " + ("pickaxe" if tool_type == ToolType.PICKAXE else "hammer") + " tool")
+	else:
+		print("WARNING: Tool buttons not found in the scene!")
+
+# Handle input events (for dev mode toggle)
+func _input(event):
+	if event is InputEventKey and event.pressed:
+		# Toggle dev mode with F1 key
+		if event.keycode == KEY_F1:
+			dev_mode_unlimited_durability = !dev_mode_unlimited_durability
+			update_durability_label()
+			if dev_mode_unlimited_durability:
+				print("DEV MODE ENABLED: Unlimited durability activated!")
+			else:
+				print("DEV MODE DISABLED: Normal durability restored.")
 
 # End the game and display results
 func end_game():
@@ -540,18 +772,28 @@ func end_game():
 		if treasure["revealed"]:
 			revealed_count += 1
 			
-			# Get the grid position
+			# Get the grid position and find the treasure data in the correct layer
 			var grid_pos = treasure["grid_pos"]
-			var treasure_data = grid[grid_pos.y][grid_pos.x]["layers"][2]["treasure"]
+			var cell_data = grid[grid_pos.y][grid_pos.x]
 			
-			# Add value if available - handle both dictionary and object formats
-			if typeof(treasure_data) == TYPE_DICTIONARY:
-				# It's a dictionary (test data)
-				if treasure_data.has("base_price"):
-					total_value += treasure_data["base_price"]
+			# Find which layer contains the treasure
+			var treasure_data = null
+			for layer in cell_data["layers"]:
+				if layer["type"] == LayerType.TREASURE and layer.has("treasure"):
+					treasure_data = layer["treasure"]
+					break
+			
+			# Add value if treasure data exists and is valid
+			if treasure_data != null:
+				if typeof(treasure_data) == TYPE_DICTIONARY:
+					# It's a dictionary (test data)
+					if treasure_data.has("base_price"):
+						total_value += treasure_data["base_price"]
+				else:
+					# It's an object (MiningItem)
+					total_value += treasure_data.base_price
 			else:
-				# It's an object (MiningItem)
-				total_value += treasure_data.base_price
+				print("WARNING: Could not find treasure data for revealed treasure at " + str(grid_pos))
 	
 	# Create results popup
 	var results = Label.new()
@@ -562,7 +804,7 @@ func end_game():
 	var panel = Panel.new()
 	panel.name = "ResultsPanel"
 	panel.size = Vector2(400, 300)
-	panel.position = (get_viewport_rect().size - panel.size) / 2
+	panel.position = (get_viewport().get_visible_rect().size - panel.size) / 2
 	
 	var vbox = VBoxContainer.new()
 	vbox.size = panel.size
@@ -577,3 +819,14 @@ func end_game():
 	
 	panel.add_child(vbox)
 	add_child(panel)
+
+# Close the minigame and restore cursor
+func close_minigame():
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	# You can add additional cleanup here if needed
+	# For now, just hide the minigame or go back to main scene
+	queue_free()  # Remove the minigame scene
+
+# Ensure cursor is restored when leaving the minigame
+func _exit_tree():
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
