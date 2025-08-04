@@ -1,0 +1,215 @@
+{
+  "version": "1.0",
+  "description": "Mining item database - all gems, crystals, and treasures",
+  "items": [
+    {
+      "id": "001",
+      "name": "Amethyst",
+      "category": "crystals_gems",
+      "base_price": 70.0,
+      "weight": 65,
+      "start_range": 1,
+      "end_range": 65,
+      "mine_locations": [1, 2],
+      "flavor_text": ""
+    },
+    {
+      "id": "002",
+      "name": "Ruby",
+      "category": "crystals_gems",
+      "base_price": 74.0,
+      "weight": 62,
+      "start_range": 66,
+      "end_range": 127,
+      "mine_locations": [1, 2],
+      "flavor_text": ""
+    },
+    {
+      "id": "003",
+      "name": "Sapphire",
+      "category": "crystals_gems",
+      "base_price": 78.0,
+      "weight": 57,
+      "start_range": 128,
+      "end_range": 184,
+      "mine_locations": [1, 2],
+      "flavor_text": ""
+    },
+    {
+      "id": "004",
+      "name": "Emerald",
+      "category": "crystals_gems",
+      "base_price": 82.0,
+      "weight": 52,
+      "start_range": 185,
+      "end_range": 236,
+      "mine_locations": [1, 2],
+      "flavor_text": ""
+    },
+    {
+      "id": "005",
+      "name": "Diamond",
+      "category": "crystals_gems",
+      "base_price": 25.0,
+      "weight": 65,
+      "start_range": 237,
+      "end_range": 301,
+      "mine_locations": [1],
+      "flavor_text": "All my homies hate diamonds."
+    },
+    {
+      "id": "006",
+      "name": "Topaz",
+      "category": "crystals_gems",
+      "base_price": 92.0,
+      "weight": 45,
+      "start_range": 302,
+      "end_range": 346,
+      "mine_locations": [2],
+      "flavor_text": ""
+    },
+    {
+      "id": "007",
+      "name": "Selenite",
+      "category": "crystals_gems",
+      "base_price": 64.0,
+      "weight": 68,
+      "start_range": 347,
+      "end_range": 414,
+      "mine_locations": [1, 2],
+      "flavor_text": ""
+    },
+    {
+      "id": "008",
+      "name": "Quartz",
+      "category": "crystals_gems",
+      "base_price": 83.0,
+      "weight": 48,
+      "start_range": 415,
+      "end_range": 462,
+      "mine_locations": [2],
+      "flavor_text": ""
+    },
+    {
+      "id": "009",
+      "name": "Rose Quartz",
+      "category": "crystals_gems",
+      "base_price": 94.0,
+      "weight": 44,
+      "start_range": 463,
+      "end_range": 506,
+      "mine_locations": [2],
+      "flavor_text": "Slightly better than diamonds."
+    },
+    {
+      "id": "010",
+      "name": "Opal",
+      "category": "crystals_gems",
+      "base_price": 120.0,
+      "weight": 20,
+      "start_range": 507,
+      "end_range": 526,
+      "mine_locations": [0],
+      "flavor_text": ""
+    },
+    {
+      "id": "011",
+      "name": "Garnet",
+      "category": "crystals_gems",
+      "base_price": 75.0,
+      "weight": 60,
+      "start_range": 527,
+      "end_range": 586,
+      "mine_locations": [1, 2],
+      "flavor_text": ""
+    },
+    {
+      "id": "012",
+      "name": "Titanite",
+      "category": "crystals_gems",
+      "base_price": 96.0,
+      "weight": 30,
+      "start_range": 587,
+      "end_range": 616,
+      "mine_locations": [2, 3],
+      "flavor_text": ""
+    },
+    {
+      "id": "013",
+      "name": "Alexandrite",
+      "category": "crystals_gems",
+      "base_price": 240.0,
+      "weight": 8,
+      "start_range": 617,
+      "end_range": 624,
+      "mine_locations": [3],
+      "flavor_text": "Keep away from Gobbies."
+    },
+    {
+      "id": "014",
+      "name": "Moonstone",
+      "category": "crystals_gems",
+      "base_price": 99.0,
+      "weight": 45,
+      "start_range": 625,
+      "end_range": 669,
+      "mine_locations": [2],
+      "flavor_text": ""
+    },
+    {
+      "id": "015",
+      "name": "Jade",
+      "category": "crystals_gems",
+      "base_price": 50.0,
+      "weight": 23,
+      "start_range": 670,
+      "end_range": 692,
+      "mine_locations": [1, 2, 3],
+      "flavor_text": ""
+    },
+    {
+      "id": "016",
+      "name": "Citrine",
+      "category": "crystals_gems",
+      "base_price": 55.0,
+      "weight": 25,
+      "start_range": 693,
+      "end_range": 717,
+      "mine_locations": [1, 2, 3],
+      "flavor_text": ""
+    },
+    {
+      "id": "017",
+      "name": "Agate",
+      "category": "crystals_gems",
+      "base_price": 45.0,
+      "weight": 70,
+      "start_range": 718,
+      "end_range": 787,
+      "mine_locations": [1, 2, 3],
+      "flavor_text": ""
+    },
+    {
+      "id": "018",
+      "name": "Fire Agate",
+      "category": "crystals_gems",
+      "base_price": 85.0,
+      "weight": 45,
+      "start_range": 788,
+      "end_range": 832,
+      "mine_locations": [1, 2, 3],
+      "flavor_text": ""
+    },
+    {
+      "id": "019",
+      "name": "Moss Agate",
+      "category": "crystals_gems",
+      "base_price": 65.0,
+      "weight": 60,
+      "start_range": 833,
+      "end_range": 892,
+      "mine_locations": [1, 2, 3],
+      "flavor_text": ""
+    }
+  ]
+}

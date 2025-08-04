@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://8laamg8l10ye"]
+[gd_scene load_steps=4 format=3 uid="uid://8laamg8l10ye"]
 
 [ext_resource type="Script" path="res://Scripts/mining_minigame.gd" id="1_yyqqf"]
 [ext_resource type="Texture2D" uid="uid://d0eubdi4cjt0i" path="res://textures/image assets/Pickaxe Icon.png" id="2_2oldh"]
+[ext_resource type="Texture2D" uid="uid://c3vgljojl6cxu" path="res://textures/image assets/Sledgehammer Icon.png" id="3_bratm"]
 
 [node name="MiningMinigame" type="CanvasLayer"]
 script = ExtResource("1_yyqqf")
@@ -61,9 +62,9 @@ anchor_top = 0.5
 anchor_right = 1.0
 anchor_bottom = 0.5
 offset_left = -101.0
-offset_top = -262.0
+offset_top = -208.0
 offset_right = -24.0
-offset_bottom = 262.0
+offset_bottom = 192.0
 grow_horizontal = 0
 grow_vertical = 2
 theme_override_constants/separation = 15
@@ -74,7 +75,7 @@ size_flags_vertical = 3
 text = "Pickaxe"
 
 [node name="Pickaxe Icon" type="Sprite2D" parent="MainContainer/ToolContainer/PickaxeTool"]
-position = Vector2(38, 96)
+position = Vector2(38, 45)
 scale = Vector2(0.235, 0.235)
 texture = ExtResource("2_2oldh")
 
@@ -82,6 +83,11 @@ texture = ExtResource("2_2oldh")
 layout_mode = 2
 size_flags_vertical = 3
 text = "Hammer"
+
+[node name="Hammer Icon" type="Sprite2D" parent="MainContainer/ToolContainer/HammerTool"]
+position = Vector2(38, 45)
+scale = Vector2(0.235, 0.235)
+texture = ExtResource("3_bratm")
 
 [node name="CloseButton" type="Button" parent="MainContainer"]
 layout_mode = 2

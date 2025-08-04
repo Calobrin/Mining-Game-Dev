@@ -35,7 +35,7 @@ var treasures = []  # Stores the treasure locations and types
 @export_range(6, 15, 1) var max_treasures: int = 10  # Maximum treasures per game
 
 # Durability cost percentages (easily adjustable for game balance)
-@export_range(0.5, 3.0, 0.1) var pickaxe_durability_cost_percent: float = 1.0  # 1% per cell
+@export_range(0.5, 3.0, 0.1) var pickaxe_base_cost: float = 1.0  # 1% per cell
 @export_range(1.0, 5.0, 0.1) var hammer_base_cost_percent: float = 2.0  # 2% base cost for hammer
 @export_range(0.1, 1.0, 0.1) var hammer_per_cell_cost_percent: float = 0.5  # 0.5% per additional cell
 @export_range(3.0, 8.0, 0.1) var hammer_max_cost_percent: float = 5.0  # 5% maximum cost
@@ -285,7 +285,9 @@ func _process(_delta):
 func update_durability_label():
 	var label = $"MainContainer/UI Elements/DurabilityLabel"
 	if label != null:
-		label.text = "Durability: " + str(current_durability)
+		# Ensure displayed durability is never negative
+		var display_durability = max(0, current_durability)
+		label.text = "Durability: " + str(display_durability)
 
 # Handle viewport resizing
 func on_viewport_resized():
@@ -347,6 +349,8 @@ func place_treasures(count: int):
 	var max_rare_gems = max(1, float(count) / 3)  # At least 1 rare gem, up to 1/3 of total
 	
 	print("Placing " + str(count) + " treasures in mine #" + str(mine_id))
+	
+
 	
 	# Create a list of all available positions
 	var available_positions = []
@@ -571,7 +575,7 @@ func on_cell_clicked(x: int, y: int):
 	if cells_that_will_be_damaged > 0:
 		if current_tool == ToolType.PICKAXE:
 			# Pickaxe: simple percentage per cell
-			durability_cost = int(max_durability * (pickaxe_durability_cost_percent / 100.0) * cells_that_will_be_damaged)
+			durability_cost = int(max_durability * (pickaxe_base_cost / 100.0) * cells_that_will_be_damaged)
 		else:  # HAMMER
 			# Hammer: base cost + additional cost per cell beyond the first
 			var base_cost = max_durability * (hammer_base_cost_percent / 100.0)
@@ -588,6 +592,8 @@ func on_cell_clicked(x: int, y: int):
 			print("DEV MODE: Durability cost ignored (", durability_cost, " would have been spent)")
 		else:
 			current_durability -= durability_cost
+			# Ensure durability never goes below 0
+			current_durability = max(0, current_durability)
 			print("Durability cost: ", durability_cost, " (", cells_that_will_be_damaged, " cells affected)")
 		
 		update_durability_label()
@@ -778,9 +784,9 @@ func end_game():
 			
 			# Find which layer contains the treasure
 			var treasure_data = null
-			for layer in cell_data["layers"]:
-				if layer["type"] == LayerType.TREASURE and layer.has("treasure"):
-					treasure_data = layer["treasure"]
+			for layer_data in cell_data["layers"]:
+				if layer_data["type"] == LayerType.TREASURE and layer_data.has("treasure"):
+					treasure_data = layer_data["treasure"]
 					break
 			
 			# Add value if treasure data exists and is valid

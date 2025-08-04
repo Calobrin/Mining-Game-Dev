@@ -2,6 +2,9 @@ extends Node
 # This file contains all the mining item data in a single place
 # No need for resource generation or importing - just pure data
 
+# Path to the JSON data file
+const ITEMS_DATA_PATH = "res://Data/mining_items.json"
+
 # Class to represent a mining item
 class MiningItem:
 	var id: String
@@ -31,6 +34,9 @@ class MiningItem:
 				break
 			elif loc is int:
 				mine_locations.append(loc)
+			elif loc is float:
+				# JSON parser returns floats, convert to int
+				mine_locations.append(int(loc))
 			elif loc is String and loc.strip_edges().is_valid_int():
 				mine_locations.append(int(loc.strip_edges()))
 		flavor_text = p_flavor
@@ -44,44 +50,103 @@ class MiningItem:
 		# Otherwise, check if the specific mine ID is in the list
 		return mine_id in mine_locations
 
-# Master list of all mining items
-var all_items: Array[MiningItem] = [
-	# Format: ID, Name, Category, Price, Weight, StartRange, EndRange, Locations, Flavor
-	MiningItem.new("001", "Amethyst", "crystals_gems", 70.0, 65, 1, 65, [1, 2], ""),
-	MiningItem.new("002", "Ruby", "crystals_gems", 74.0, 62, 66, 127, [1, 2], ""),
-	MiningItem.new("003", "Sapphire", "crystals_gems", 78.0, 57, 128, 184, [1, 2], ""),
-	MiningItem.new("004", "Emerald", "crystals_gems", 82.0, 52, 185, 236, [1, 2], ""),
-	MiningItem.new("005", "Diamond", "crystals_gems", 25.0, 65, 237, 301, [1], "\"All my homies hate diamonds.\""),
-	MiningItem.new("006", "Topaz", "crystals_gems", 92.0, 45, 302, 346, [2], ""),
-	MiningItem.new("007", "Selenite", "crystals_gems", 64.0, 68, 347, 414, [1, 2], ""),
-	MiningItem.new("008", "Quartz", "crystals_gems", 83.0, 48, 415, 462, [2], ""),
-	MiningItem.new("009", "Rose Quartz", "crystals_gems", 94.0, 44, 463, 506, [2], "\"Slightly better than diamonds.\""),
-	MiningItem.new("010", "Opal", "crystals_gems", 120.0, 20, 507, 526, ["all"], ""),
-	MiningItem.new("011", "Garnet", "crystals_gems", 75.0, 60, 527, 586, [1, 2], ""),
-	MiningItem.new("012", "Titanite", "crystals_gems", 96.0, 30, 587, 616, [2, 3], ""),
-	MiningItem.new("013", "Alexandrite", "crystals_gems", 240.0, 8, 617, 624, [3], "\"Keep away from Gobbies.\""),
-	MiningItem.new("014", "Moonstone", "crystals_gems", 99.0, 45, 625, 669, [2], ""),
-	MiningItem.new("015", "Jade", "crystals_gems", 50.0, 23, 670, 692, [], ""),
-	MiningItem.new("016", "Citrine", "crystals_gems", 55.0, 25, 693, 717, [], ""),
-	MiningItem.new("017", "Agate", "crystals_gems", 45.0, 70, 718, 787, [], ""),
-	MiningItem.new("018", "Fire Agate", "crystals_gems", 85.0, 45, 788, 832, [], ""),
-	MiningItem.new("019", "Moss Agate", "crystals_gems", 65.0, 60, 833, 892, [], "")
-]
+# Helper function to check if an item can appear in a specific mine
+func can_appear_in_mine(mine_locations: Array, mine_id: int) -> bool:
+	# If mine_locations is empty, item can appear in any mine (universal items)
+	if mine_locations.is_empty():
+		return true
+	
+	# Check each location in the array
+	for location in mine_locations:
+		# Check for "all" indicator (0 means all mines)
+		if location == 0:
+			return true
+		# Check for string "all" (in case someone uses this format)
+		if typeof(location) == TYPE_STRING and location == "all":
+			return true
+		# Check if the specific mine ID matches
+		if location == mine_id:
+			return true
+	
+	# No match found
+	return false
+
+# Master list of all mining items (loaded from JSON)
+var all_items: Array[MiningItem] = []
 
 # Dictionary for quick lookup by ID
 var items_by_id: Dictionary = {}
 
 func _ready():
+	load_items_from_json()
+	
 	# Populate the lookup dictionary
 	for item in all_items:
 		items_by_id[item.id] = item
+	
+	print("Loaded " + str(all_items.size()) + " mining items from JSON")
+
+# Load items from JSON file
+func load_items_from_json():
+	var file = FileAccess.open(ITEMS_DATA_PATH, FileAccess.READ)
+	if file == null:
+		print("ERROR: Could not open mining items data file: " + ITEMS_DATA_PATH)
+		print("Creating fallback test data...")
+		create_fallback_data()
+		return
+	
+	var json_string = file.get_as_text()
+	file.close()
+	
+	var json = JSON.new()
+	var parse_result = json.parse(json_string)
+	
+	if parse_result != OK:
+		print("ERROR: Failed to parse JSON data: " + str(parse_result))
+		print("Creating fallback test data...")
+		create_fallback_data()
+		return
+	
+	var data = json.data
+	if not data.has("items"):
+		print("ERROR: JSON file missing 'items' array")
+		create_fallback_data()
+		return
+	
+	# Convert JSON data to MiningItem objects
+	for item_data in data["items"]:
+		var item = MiningItem.new(
+			item_data.get("id", ""),
+			item_data.get("name", "Unknown"),
+			item_data.get("category", "misc"),
+			item_data.get("base_price", 0.0),
+			item_data.get("weight", 1),
+			item_data.get("start_range", 0),
+			item_data.get("end_range", 0),
+			item_data.get("mine_locations", []),
+			item_data.get("flavor_text", "")
+		)
+		all_items.append(item)
+	
+	print("Successfully loaded " + str(all_items.size()) + " items from JSON")
+
+# Fallback data in case JSON loading fails
+func create_fallback_data():
+	print("Using hardcoded fallback data...")
+	all_items = [
+		MiningItem.new("001", "Amethyst", "crystals_gems", 70.0, 65, 1, 65, [1, 2], ""),
+		MiningItem.new("002", "Ruby", "crystals_gems", 74.0, 62, 66, 127, [1, 2], ""),
+		MiningItem.new("003", "Sapphire", "crystals_gems", 78.0, 57, 128, 184, [1, 2], ""),
+		MiningItem.new("004", "Emerald", "crystals_gems", 82.0, 52, 185, 236, [1, 2], ""),
+		MiningItem.new("005", "Diamond", "crystals_gems", 25.0, 65, 237, 301, [1], "All my homies hate diamonds.")
+	]
 
 # Get a random mining item based on the specified mine location
 func get_random_item(mine_id: int) -> MiningItem:
 	# Find the maximum range value
 	var total_range = 0
 	for item in all_items:
-		if item.can_appear_in_mine(mine_id) and item.end_range > total_range:
+		if can_appear_in_mine(item.mine_locations, mine_id) and item.end_range > total_range:
 			total_range = item.end_range
 	
 	# Generate a random roll within the range
@@ -89,11 +154,11 @@ func get_random_item(mine_id: int) -> MiningItem:
 	
 	# Find which item this roll corresponds to
 	for item in all_items:
-		if item.can_appear_in_mine(mine_id) and roll >= item.start_range and roll <= item.end_range:
+		if can_appear_in_mine(item.mine_locations, mine_id) and roll >= item.start_range and roll <= item.end_range:
 			return item
 	
 	# Fallback (should never happen if ranges are contiguous)
-	return all_items[0]
+	return all_items[0] if all_items.size() > 0 else null
 
 # Get an item by its ID
 func get_item_by_id(id: String) -> MiningItem:
@@ -113,6 +178,18 @@ func get_items_by_category(category: String) -> Array[MiningItem]:
 func get_items_in_mine(mine_id: int) -> Array[MiningItem]:
 	var result: Array[MiningItem] = []
 	for item in all_items:
-		if item.can_appear_in_mine(mine_id):
+		if can_appear_in_mine(item.mine_locations, mine_id):
 			result.append(item)
 	return result
+
+# Reload items from JSON (useful for development/modding)
+func reload_items():
+	all_items.clear()
+	items_by_id.clear()
+	load_items_from_json()
+	
+	# Repopulate lookup dictionary
+	for item in all_items:
+		items_by_id[item.id] = item
+	
+	print("Reloaded " + str(all_items.size()) + " items from JSON")
