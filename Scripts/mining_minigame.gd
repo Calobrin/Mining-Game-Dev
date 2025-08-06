@@ -1,8 +1,23 @@
 extends CanvasLayer
 
+# ============================================================================
+# CONSTANTS - Centralized values for easy tweaking
+# ============================================================================
+
+# Visual constants
+const TREASURE_SIZE_MULTIPLIER = 0.8  # Treasure visual size relative to cell
+const CELL_OPACITY_MIN = 0.3  # Minimum opacity for damaged cells
+const BORDER_OPACITY = 0.5  # Border transparency
+
+# Color constants
+const COLOR_DIRT = Color(0.6, 0.4, 0.2)
+const COLOR_STONE = Color(0.48, 0.48, 0.48)  # Realistic neutral stone gray
+const COLOR_EMPTY = Color(0.2, 0.2, 0.2)
+const COLOR_TREASURE_BG = Color(0.8, 0.7, 0.2)
+const COLOR_BORDER = Color(0.3, 0.3, 0.3)
 
 # Grid properties
-const GRID_SIZE = Vector2i(17, 10)  # 10x10 grid				# No space between cells - continuous terrain
+const GRID_SIZE = Vector2i(17, 10)  # 17x10 grid				# No space between cells - continuous terrain
 
 # Use fixed or dynamic cell size
 @export var use_fixed_cell_size: bool = true		# Set to false for dynamic sizing based on container
@@ -86,41 +101,54 @@ func _ready():
 	print("DEBUG: Starting new game from _ready()...")
 	start_game()
 
-# Initialize the grid with layered structure
+# Initialize the grid with layered structure using cluster-based stone generation
 func init_grid():
 	grid = []
+	
+	# First, create the base grid structure (all dirt initially)
 	for y in range(GRID_SIZE.y):
 		var row = []
 		for x in range(GRID_SIZE.x):
-			# Each cell has layers: stone (possibly), dirt, and content (treasure or empty)
-			var has_stone = randf() < 0.4  # 40% chance of having stone layer
-			
-			# Each cell is a dictionary with layer information
+			# Each cell starts as dirt-only configuration
 			row.append({
 				"layers": [
-					# First element is topmost visible layer
 					{
-						"type": LayerType.STONE if has_stone else LayerType.DIRT,
-						"durability": 100,  # Each layer starts with full durability
-						"revealed": false   # Whether this layer has been broken through
-					},
-					# Second element is middle layer (only if we have stone on top)
-					{
-						"type": LayerType.DIRT if has_stone else LayerType.EMPTY,
+						"type": LayerType.DIRT,
 						"durability": 100,
 						"revealed": false
 					},
-					# Third element is bottom layer (treasure or empty)
 					{
-						"type": LayerType.EMPTY,  # Will be set to TREASURE later if needed
-						"durability": 0,  # No durability for empty spaces
+						"type": LayerType.EMPTY,
+						"durability": 100,
+						"revealed": false
+					},
+					{
+						"type": LayerType.EMPTY,
+						"durability": 0,
 						"revealed": false,
-						"treasure": null  # Will store treasure data if present
+						"treasure": null
 					}
 				],
-				"current_layer": 0  # Index of the currently visible/active layer
+				"current_layer": 0
 			})
 		grid.append(row)
+	
+	# Now generate stone clusters using geological algorithms
+	generate_stone_clusters()
+
+# Generate realistic stone formations using multiple algorithms
+func generate_stone_clusters():
+	# Use the new modular geological generator
+	GeologicalGenerator.generate_formations(grid, GRID_SIZE, place_stone_at)
+
+
+
+# Helper function to place stone at a specific grid position
+func place_stone_at(x: int, y: int):
+	# Convert dirt-only cell to stone+dirt cell
+	grid[y][x]["layers"][0]["type"] = LayerType.STONE  # Top layer becomes stone
+	grid[y][x]["layers"][1]["type"] = LayerType.DIRT   # Middle layer becomes dirt
+	# Bottom layer stays EMPTY (for potential treasures)
 
 # Calculate overlay dimensions based on viewport size
 func get_overlay_dimensions() -> Vector2:
@@ -144,8 +172,6 @@ func get_grid_centering_offset() -> Vector2:
 	var offset_x = (overlay_dims.x - total_grid_width) / 2.0
 	var offset_y = (overlay_dims.y - total_grid_height) / 2.0
 	
-	print("Overlay dims: ", overlay_dims, " Grid size: ", Vector2(total_grid_width, total_grid_height))
-	print("Centering offset: ", Vector2(offset_x, offset_y))
 	return Vector2(offset_x, offset_y)
 
 # Calculate actual cell size based on settings and screen resolution
@@ -177,9 +203,6 @@ func create_grid_visuals():
 	# Get the actual cell size to use
 	var actual_cell_size = get_actual_cell_size()
 	
-	# Get the centering offset
-	var centering_offset = get_grid_centering_offset()
-	
 	# Set up rows of cells
 	for y in range(GRID_SIZE.y):
 		var row = []
@@ -193,31 +216,20 @@ func create_grid_visuals():
 			cell.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			cell.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			# Position cell with centering offset
-			cell.position = Vector2(
-				centering_offset.x + x * (actual_cell_size.x),
-				centering_offset.y + y * (actual_cell_size.y)
-			)
+			cell.position = calculate_cell_position(x, y)
 			
 			# Set color based on top layer
 			var current_layer = cell_data["layers"][cell_data["current_layer"]]
 			
 			if current_layer["type"] == LayerType.DIRT:
-				cell.color = Color(0.6, 0.4, 0.2)  # Brown for dirt
+				cell.color = COLOR_DIRT
 			elif current_layer["type"] == LayerType.STONE:
-				cell.color = Color(0.5, 0.5, 0.55)  # Grey for stone
+				cell.color = COLOR_STONE
 			else:
-				cell.color = Color(0.2, 0.2, 0.2)  # Dark grey for empty or treasure (not visible yet)
+				cell.color = COLOR_EMPTY
 			
 			# Add subtle border for visual distinction
-			var border_color = Color(0.3, 0.3, 0.3, 0.5)  # Semi-transparent dark border
-			var style_box = StyleBoxFlat.new()
-			style_box.bg_color = cell.color
-			style_box.border_width_left = 1
-			style_box.border_width_right = 1
-			style_box.border_width_top = 1
-			style_box.border_width_bottom = 1
-			style_box.border_color = border_color
-			cell.add_theme_stylebox_override("panel", style_box)
+			cell.add_theme_stylebox_override("panel", create_cell_style_box(cell.color))
 			
 			# Make cell clickable with direct reference to coordinates
 			cell.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -350,8 +362,6 @@ func place_treasures(count: int):
 	
 	print("Placing " + str(count) + " treasures in mine #" + str(mine_id))
 	
-
-	
 	# Create a list of all available positions
 	var available_positions = []
 	for y in range(GRID_SIZE.y):
@@ -441,52 +451,23 @@ func place_treasures(count: int):
 
 # Helper function to get treasure name safely whether it's a dictionary or object
 func get_treasure_name(treasure_data):
-	if typeof(treasure_data) == TYPE_DICTIONARY:
-		return treasure_data["name"] if treasure_data.has("name") else "???"
-	else:
-		return treasure_data.name
+	return get_treasure_name_safe(treasure_data)
 
 # Create a visual for a treasure with color based on value
 func create_treasure_visual(treasure_data, grid_x, grid_y):
-	# Use the same cell size calculation
 	var actual_cell_size = get_actual_cell_size()
 	
 	var visual = ColorRect.new()
-	visual.size = actual_cell_size * 0.8  # Slightly smaller than the cell
+	visual.size = actual_cell_size * TREASURE_SIZE_MULTIPLIER
+	visual.position = calculate_cell_position(grid_x, grid_y, TREASURE_SIZE_MULTIPLIER)
 	
-	# Get centering offset to match grid positioning
-	var centering_offset = get_grid_centering_offset()
-	visual.position = Vector2(
-		centering_offset.x + grid_x * (actual_cell_size.x) + actual_cell_size.x * 0.1,
-		centering_offset.y + grid_y * (actual_cell_size.y) + actual_cell_size.y * 0.1
-	)
+	# Get color based on treasure value using helper function
+	var gem_color = get_treasure_color(treasure_data)
+	var price = get_treasure_price(treasure_data)
 	
-	# Color based on treasure value
-	# In a real game, you'd use sprites instead of colored rectangles
-	var gem_color = Color(0.8, 0.5, 0.9)  # Default purple for generic gem
-	
-	# If treasure has a price, use color coding by value
-	var price = 0.0
-	
-	# Check if treasure_data is a dictionary or an object
-	if typeof(treasure_data) == TYPE_DICTIONARY:
-		# It's a dictionary (test data)
-		if treasure_data.has("base_price"):
-			price = treasure_data["base_price"]
-	else:
-		# It's an object (MiningItem)
-		price = treasure_data.base_price
-		
-	# Set color based on price
-	if price > 100.0:  # High value - gold/yellow
-		gem_color = Color(0.9, 0.85, 0.2)
+	# Log high value gems
+	if price > 100.0:
 		print("High value gem: " + get_treasure_name(treasure_data) + " (" + str(price) + ")")
-	elif price > 75.0:  # Medium-high value - blue
-		gem_color = Color(0.2, 0.6, 0.9)
-	elif price > 50.0:  # Medium value - green
-		gem_color = Color(0.2, 0.8, 0.4)
-	elif price > 0:  # Lower value - pink/purple
-		gem_color = Color(0.8, 0.5, 0.9)
 	
 	visual.color = gem_color
 	
@@ -670,32 +651,24 @@ func update_cell_visual(x: int, y: int):
 	# Calculate opacity based on durability (0-100%)
 	var opacity = 1.0
 	if current_layer["type"] != LayerType.EMPTY and current_layer["type"] != LayerType.TREASURE:
-		opacity = max(0.3, current_layer["durability"] / 100.0)  # Minimum opacity of 30%
+		opacity = max(CELL_OPACITY_MIN, current_layer["durability"] / 100.0)
 	
 	# Update color based on layer type
 	var new_color: Color
 	if current_layer["type"] == LayerType.DIRT:
-		new_color = Color(0.6, 0.4, 0.2, opacity)  # Brown for dirt
+		new_color = Color(COLOR_DIRT.r, COLOR_DIRT.g, COLOR_DIRT.b, opacity)
 	elif current_layer["type"] == LayerType.STONE:
-		new_color = Color(0.5, 0.5, 0.55, opacity)  # Grey for stone
+		new_color = Color(COLOR_STONE.r, COLOR_STONE.g, COLOR_STONE.b, opacity)
 	elif current_layer["type"] == LayerType.EMPTY:
-		new_color = Color(0.2, 0.2, 0.2)  # Dark grey for empty
+		new_color = COLOR_EMPTY
 	elif current_layer["type"] == LayerType.TREASURE:
-		new_color = Color(0.8, 0.7, 0.2)  # Gold background for treasure
+		new_color = COLOR_TREASURE_BG
 	
 	# Update both the color property and the style box
 	cell_visual.color = new_color
 	
 	# Update the style box to maintain border with new color
-	var border_color = Color(0.3, 0.3, 0.3, 0.5)  # Semi-transparent dark border
-	var style_box = StyleBoxFlat.new()
-	style_box.bg_color = new_color
-	style_box.border_width_left = 1
-	style_box.border_width_right = 1
-	style_box.border_width_top = 1
-	style_box.border_width_bottom = 1
-	style_box.border_color = border_color
-	cell_visual.add_theme_stylebox_override("panel", style_box)
+	cell_visual.add_theme_stylebox_override("panel", create_cell_style_box(new_color))
 
 # Reveal a treasure at the specified grid position
 func reveal_treasure(x: int, y: int):
@@ -791,13 +764,7 @@ func end_game():
 			
 			# Add value if treasure data exists and is valid
 			if treasure_data != null:
-				if typeof(treasure_data) == TYPE_DICTIONARY:
-					# It's a dictionary (test data)
-					if treasure_data.has("base_price"):
-						total_value += treasure_data["base_price"]
-				else:
-					# It's an object (MiningItem)
-					total_value += treasure_data.base_price
+				total_value += get_treasure_price(treasure_data)
 			else:
 				print("WARNING: Could not find treasure data for revealed treasure at " + str(grid_pos))
 	
@@ -836,3 +803,70 @@ func close_minigame():
 # Ensure cursor is restored when leaving the minigame
 func _exit_tree():
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+# ============================================================================
+# HELPER FUNCTIONS - Utility functions to reduce code duplication
+# ============================================================================
+
+# Helper function to safely get treasure properties (handles both dict and object)
+func get_treasure_property(treasure_data, property_name: String, default_value = null):
+	if treasure_data == null:
+		return default_value
+		
+	if typeof(treasure_data) == TYPE_DICTIONARY:
+		return treasure_data.get(property_name, default_value)
+	else:
+		# It's an object (MiningItem)
+		if treasure_data.has_method("get"):
+			return treasure_data.get(property_name)
+		else:
+			# Direct property access
+			match property_name:
+				"name":
+					return treasure_data.name if "name" in treasure_data else default_value
+				"base_price":
+					return treasure_data.base_price if "base_price" in treasure_data else default_value
+				_:
+					return default_value
+
+# Helper function to get treasure name safely
+func get_treasure_name_safe(treasure_data) -> String:
+	return get_treasure_property(treasure_data, "name", "???")
+
+# Helper function to get treasure price safely
+func get_treasure_price(treasure_data) -> float:
+	return get_treasure_property(treasure_data, "base_price", 0.0)
+
+# Helper function to calculate cell position with centering
+func calculate_cell_position(grid_x: int, grid_y: int, size_multiplier: float = 1.0) -> Vector2:
+	var actual_cell_size = get_actual_cell_size()
+	var centering_offset = get_grid_centering_offset()
+	
+	return Vector2(
+		centering_offset.x + grid_x * actual_cell_size.x + actual_cell_size.x * (1.0 - size_multiplier) * 0.5,
+		centering_offset.y + grid_y * actual_cell_size.y + actual_cell_size.y * (1.0 - size_multiplier) * 0.5
+	)
+
+# Helper function to get color based on treasure value
+func get_treasure_color(treasure_data) -> Color:
+	var price = get_treasure_price(treasure_data)
+	
+	if price > 100.0:  # High value - gold/yellow
+		return Color(0.9, 0.85, 0.2)
+	elif price > 75.0:  # Medium-high value - blue
+		return Color(0.2, 0.6, 0.9)
+	elif price > 50.0:  # Medium value - green
+		return Color(0.2, 0.8, 0.4)
+	else:  # Lower value - pink/purple
+		return Color(0.8, 0.5, 0.9)
+
+# Helper function to create style box for cells (reduces object creation)
+func create_cell_style_box(bg_color: Color) -> StyleBoxFlat:
+	var style_box = StyleBoxFlat.new()
+	style_box.bg_color = bg_color
+	style_box.border_width_left = 1
+	style_box.border_width_right = 1
+	style_box.border_width_top = 1
+	style_box.border_width_bottom = 1
+	style_box.border_color = Color(COLOR_BORDER.r, COLOR_BORDER.g, COLOR_BORDER.b, BORDER_OPACITY)
+	return style_box
