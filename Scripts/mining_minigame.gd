@@ -68,7 +68,6 @@ var hammer_damage = {
 
 # Visual elements
 var cell_nodes = []  # Stores references to the cell UI nodes
-var treasure_nodes = []  # Stores references to the treasure UI nodes
 
 # Called when the node enters the scene tree for the first time
 func _ready():
@@ -349,99 +348,24 @@ func start_game():
 	print("Mining game started! Break through stone (4 hits) to reveal dirt (1 hit), and dirt to find treasures!")
 	print("Pickaxe: Single cell | Hammer: Plus shape (+) | Grid: " + str(GRID_SIZE.x) + " x " + str(GRID_SIZE.y))
 
-# Place treasures in the grid using weighted random selection
+# Place treasures using the new TreasureGenerator system
 func place_treasures(count: int):
-	treasures = []
-	
 	# Mine ID that can be set when starting the minigame (default: mine 1)
 	var mine_id = 1
 	
-	# Track rare gem placement to ensure some variety
-	var rare_gems_placed = 0
-	var max_rare_gems = max(1, float(count) / 3)  # At least 1 rare gem, up to 1/3 of total
+	# Get database reference to pass to TreasureGenerator
+	var mining_database = get_node_or_null("/root/MiningItemDatabase")
 	
-	print("Placing " + str(count) + " treasures in mine #" + str(mine_id))
+	# Use TreasureGenerator to place multi-cell treasures
+	var placed_treasures = TreasureGenerator.place_treasures(grid, GRID_SIZE, count, mine_id, mining_database)
 	
-	# Create a list of all available positions
-	var available_positions = []
-	for y in range(GRID_SIZE.y):
-		for x in range(GRID_SIZE.x):
-			available_positions.append(Vector2(x, y))
-	
-	# Shuffle the positions for random placement
-	available_positions.shuffle()
-	
-	# Ensure we don't try to place more treasures than available positions
-	var treasures_to_place = min(count, available_positions.size())
-	if treasures_to_place < count:
-		print("WARNING: Only placing " + str(treasures_to_place) + " treasures (grid too small for " + str(count) + ")")
-	
-	for i in range(treasures_to_place):
-		# Get the next available position
-		var pos = available_positions[i]
-		var x = int(pos.x)
-		var y = int(pos.y)
-		
-		# Get a treasure from the database
-		var treasure = null
-		var mining_data = get_node_or_null("/root/MiningItemDatabase")
-		if mining_data != null:
-			print("Using MiningData for treasure selection...")
-			
-			# Choose either rare or common treasure
-			if rare_gems_placed < max_rare_gems and randf() < 0.3:  # 30% chance for rare gems
-				# Try to get a rare gem (more expensive)
-				var mine_items = mining_data.get_items_in_mine(mine_id)
-				print("Found " + str(mine_items.size()) + " items for mine #" + str(mine_id))
-				
-				if mine_items.size() > 0:
-					# Sort by price (descending)
-					mine_items.sort_custom(func(a, b): return a.base_price > b.base_price)
-					
-					# Get a gem from the top 20% price range
-					var top_index = max(1, mine_items.size() / 5)
-					treasure = mine_items[randi() % int(top_index)]
-					rare_gems_placed += 1
-					print("Placed rare gem: " + treasure.name + " (value: " + str(treasure.base_price) + ")")
-				else:
-					# Fallback to random if no items found
-					treasure = mining_data.get_random_item(mine_id)
-					print("No specific mine items found, using random item: " + treasure.name)
-			else:
-				# Standard random selection using weighted distribution
-				treasure = mining_data.get_random_item(mine_id)
-				print("Using standard weighted random: " + treasure.name)
-		else:
-			print("MiningItemDatabase not found, using test fallback data...")
-			# Fallback for testing when database isn't available
-			var test_gems = ["Amethyst-test", "Ruby-test", "Sapphire-test", "Emerald-test", "Diamond-test"]
-			var test_prices = [70.0, 74.0, 78.0, 82.0, 100.0]
-			var gem_index = randi() % test_gems.size()
-			treasure = {
-				"id": "test_" + str(i),
-				"name": test_gems[gem_index],
-				"base_price": test_prices[gem_index]
-			}
-		
-		# Store treasure data in the correct layer based on structure
-		# If there's stone: Stone(0) -> Dirt(1) -> Treasure(2)
-		# If no stone: Dirt(0) -> Treasure(1)
-		var has_stone = grid[y][x]["layers"][0]["type"] == LayerType.STONE
-		var treasure_layer = 2 if has_stone else 1
-		
-		grid[y][x]["layers"][treasure_layer]["type"] = LayerType.TREASURE
-		grid[y][x]["layers"][treasure_layer]["treasure"] = treasure
-		print("DEBUG: Placed treasure at layer " + str(treasure_layer) + " (has_stone: " + str(has_stone) + ")")
-		print("DEBUG: Placed treasure '" + get_treasure_name(treasure) + "' at position (" + str(x) + ", " + str(y) + ")")
-		
-		# Create a visual representation for the treasure (hidden initially)
-		var treasure_visual = create_treasure_visual(treasure, x, y)
-		treasure_visual.modulate.a = 0  # Start invisible
-		print("DEBUG: Created treasure visual at position: " + str(treasure_visual.position) + " size: " + str(treasure_visual.size))
-		$MainContainer/MainGameArea/GridContainer.add_child(treasure_visual)
+	# Convert PlacedTreasure objects to the format expected by the rest of the minigame
+	treasures = []
+	for placed_treasure in placed_treasures:
+		# Store treasure data - no separate visual needed since grid cells show treasures
 		treasures.append({
-			"visual": treasure_visual,
-			"grid_pos": Vector2(x, y),
+			"visual": null,  # Grid cells handle treasure display
+			"placed_treasure": placed_treasure,  # Reference to the full PlacedTreasure object
 			"revealed": false
 		})
 	
@@ -452,39 +376,6 @@ func place_treasures(count: int):
 # Helper function to get treasure name safely whether it's a dictionary or object
 func get_treasure_name(treasure_data):
 	return get_treasure_name_safe(treasure_data)
-
-# Create a visual for a treasure with color based on value
-func create_treasure_visual(treasure_data, grid_x, grid_y):
-	var actual_cell_size = get_actual_cell_size()
-	
-	var visual = ColorRect.new()
-	visual.size = actual_cell_size * TREASURE_SIZE_MULTIPLIER
-	visual.position = calculate_cell_position(grid_x, grid_y, TREASURE_SIZE_MULTIPLIER)
-	
-	# Get color based on treasure value using helper function
-	var gem_color = get_treasure_color(treasure_data)
-	var price = get_treasure_price(treasure_data)
-	
-	# Log high value gems
-	if price > 100.0:
-		print("High value gem: " + get_treasure_name(treasure_data) + " (" + str(price) + ")")
-	
-	visual.color = gem_color
-	
-	# CRITICAL FIX: Disable mouse input so treasure visuals don't block grid clicks
-	visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	
-	# Label with treasure name
-	var label = Label.new()
-	label.text = get_treasure_name(treasure_data)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.size = visual.size
-	# Also disable mouse input on the label
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	
-	visual.add_child(label)
-	return visual
 
 # Helper function to check if a cell is fully revealed (at bottom layer and revealed)
 func is_cell_fully_revealed(x: int, y: int) -> bool:
@@ -640,6 +531,27 @@ func hit_cell(x: int, y: int, damage_values, multiplier: float = 1.0):
 		if current_layer_after_advance < 3 and cell_data["layers"][current_layer_after_advance]["type"] == LayerType.TREASURE:
 			print("DEBUG: Found treasure at (" + str(x) + ", " + str(y) + ") at layer " + str(current_layer_after_advance) + " - revealing!")
 			reveal_treasure(x, y)
+	
+	# Check if all cells are fully excavated (reached bottom layer)
+	if not game_over:
+		check_complete_excavation()
+
+# Check if all cells have been fully excavated (reached the bottom layer)
+func check_complete_excavation():
+	var total_cells = GRID_SIZE.x * GRID_SIZE.y
+	var fully_excavated_cells = 0
+	
+	for y in range(GRID_SIZE.y):
+		for x in range(GRID_SIZE.x):
+			var cell_data = grid[y][x]
+			# Cell is fully excavated if we've reached the bottom layer (layer 2) and it's revealed
+			if cell_data["current_layer"] >= 2 and cell_data["layers"][2]["revealed"]:
+				fully_excavated_cells += 1
+	
+	# If all cells are fully excavated, end the game
+	if fully_excavated_cells >= total_cells:
+		print("All cells excavated! Ending game...")
+		end_game()
 
 # Update the visual appearance of a cell based on its durability
 func update_cell_visual(x: int, y: int):
@@ -670,22 +582,56 @@ func update_cell_visual(x: int, y: int):
 	# Update the style box to maintain border with new color
 	cell_visual.add_theme_stylebox_override("panel", create_cell_style_box(new_color))
 
-# Reveal a treasure at the specified grid position
+# Reveal a treasure at the specified grid position (Battleship-style partial reveals)
 func reveal_treasure(x: int, y: int):
-	# Find the treasure in our list
+	# Find the treasure that occupies this grid position
 	for treasure in treasures:
-		if treasure["grid_pos"] == Vector2(x, y):
-			# Safety check: only access visual if it still exists
-			if treasure["visual"] != null and is_instance_valid(treasure["visual"]):
-				# Make the treasure visible
-				treasure["visual"].modulate.a = 1.0
+		var placed_treasure = treasure["placed_treasure"]
+		
+		# Check if this treasure occupies the clicked position
+		if placed_treasure.occupies_position(Vector2i(x, y)):
+			# Mark this specific cell as having its treasure layer revealed
+			var has_stone = grid[y][x]["layers"][0]["type"] == LayerType.STONE
+			var treasure_layer = 2 if has_stone else 1
+			grid[y][x]["layers"][treasure_layer]["revealed"] = true
+			
+			# Check if ALL cells of this treasure are now excavated
+			var all_cells_excavated = true
+			for grid_pos in placed_treasure.grid_positions:
+				var gx = grid_pos.x
+				var gy = grid_pos.y
+				var cell_has_stone = grid[gy][gx]["layers"][0]["type"] == LayerType.STONE
+				var cell_treasure_layer = 2 if cell_has_stone else 1
+				
+				# Check if this cell's treasure layer is excavated
+				if not grid[gy][gx]["layers"][cell_treasure_layer]["revealed"]:
+					all_cells_excavated = false
+					break
+			
+			# Only mark treasure as "found" if ALL cells are excavated
+			if all_cells_excavated:
+				treasure["revealed"] = true
+				placed_treasure.revealed = true
+				
+				print("💎 TREASURE FOUND! You fully excavated a %s %s!" % [
+					TreasureGenerator.get_size_name(placed_treasure.size),
+					TreasureGenerator.get_treasure_name_safe(placed_treasure.treasure_data)
+				])
 			else:
-				print("WARNING: Treasure visual was destroyed (likely by window resize)")
+				# Partial hit - give feedback but don't award the treasure
+				var excavated_cells = 0
+				for grid_pos in placed_treasure.grid_positions:
+					var gx = grid_pos.x
+					var gy = grid_pos.y
+					var cell_has_stone = grid[gy][gx]["layers"][0]["type"] == LayerType.STONE
+					var cell_treasure_layer = 2 if cell_has_stone else 1
+					if grid[gy][gx]["layers"][cell_treasure_layer]["revealed"]:
+						excavated_cells += 1
+				
+				print("⚡ HIT! You found part of a treasure (%d/%d cells excavated). Keep digging!" % [
+					excavated_cells, placed_treasure.grid_positions.size()
+				])
 			
-			treasure["revealed"] = true
-			
-			# Mark the bottom layer as revealed
-			grid[y][x]["layers"][2]["revealed"] = true
 			break
 
 # Set the current mining tool
@@ -743,30 +689,24 @@ func _input(event):
 func end_game():
 	game_over = true
 	
-	# Count revealed treasures
+	# Count only explicitly revealed treasures - no credit for partially accessible ones!
 	var revealed_count = 0
 	var total_value = 0
 	
 	for treasure in treasures:
+		# Only count treasures that were actually revealed by digging
 		if treasure["revealed"]:
 			revealed_count += 1
 			
-			# Get the grid position and find the treasure data in the correct layer
-			var grid_pos = treasure["grid_pos"]
-			var cell_data = grid[grid_pos.y][grid_pos.x]
-			
-			# Find which layer contains the treasure
-			var treasure_data = null
-			for layer_data in cell_data["layers"]:
-				if layer_data["type"] == LayerType.TREASURE and layer_data.has("treasure"):
-					treasure_data = layer_data["treasure"]
-					break
+			# Get treasure data from the PlacedTreasure object
+			var placed_treasure = treasure["placed_treasure"]
+			var treasure_data = placed_treasure.treasure_data
 			
 			# Add value if treasure data exists and is valid
 			if treasure_data != null:
-				total_value += get_treasure_price(treasure_data)
+				total_value += TreasureGenerator.get_treasure_price_safe(treasure_data)
 			else:
-				print("WARNING: Could not find treasure data for revealed treasure at " + str(grid_pos))
+				print("WARNING: Could not find treasure data for revealed treasure")
 	
 	# Create results popup
 	var results = Label.new()
