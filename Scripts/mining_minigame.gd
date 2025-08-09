@@ -61,15 +61,15 @@ var treasures = []  # Stores the treasure locations and types
 @export_range(0.1, 1.0, 0.1) var hammer_per_cell_cost_percent: float = 0.5  # 0.5% per additional cell
 @export_range(3.0, 8.0, 0.1) var hammer_max_cost_percent: float = 5.0  # 5% maximum cost
 
-# Mining properties - dirt breaks in 1 hit, stone in 2 hits
+# Mining properties - dirt and stone have the same health now (1 hit at 100 damage)
 var pickaxe_damage = {
-	LayerType.STONE: 50,  # Stone takes 2 hits (100 durability / 50 damage = 2 hits)
-	LayerType.DIRT: 100   # Dirt takes 1 hit (100 durability / 100 damage = 1 hit)
+	LayerType.STONE: 100,
+	LayerType.DIRT: 100
 }
 
 var hammer_damage = {
-	LayerType.STONE: 50,  # Stone takes 2 hits (same as pickaxe)
-	LayerType.DIRT: 100   # Dirt takes 1 hit (same as pickaxe)
+	LayerType.STONE: 100,
+	LayerType.DIRT: 100
 }
 
 # Visual elements
@@ -77,6 +77,19 @@ var cell_nodes = []  # Stores references to the cell UI nodes
 
 # Dirt texture (assign in Inspector to use a tiled texture for dirt cells)
 @export var dirt_texture: Texture2D
+
+# Dirt spritesheet settings (4 frames: 0=plain, 1=damaged, 2=rubble, 3=rubble+damaged)
+const DIRT_SHEET_HFRAMES: int = 4
+const DIRT_SHEET_VFRAMES: int = 1
+const DIRT_TILE_SIZE: Vector2i = Vector2i(16, 16)
+
+# Stone texture (assign in Inspector to use a tiled texture for stone cells)
+@export var stone_texture: Texture2D
+
+# Stone spritesheet settings (2 frames: 0=solid, 1=cracked)
+const STONE_SHEET_HFRAMES: int = 2
+const STONE_SHEET_VFRAMES: int = 1
+const STONE_TILE_SIZE: Vector2i = Vector2i(16, 16)
 
 # Called when the node enters the scene tree for the first time
 func _ready():
@@ -137,7 +150,10 @@ func init_grid():
 						"treasure": null
 					}
 				],
-				"current_layer": 0
+				"current_layer": 0,
+				# Visual/state helpers
+				"had_stone": false,
+				"stone_broken": false
 			})
 		grid.append(row)
 	
@@ -157,6 +173,8 @@ func place_stone_at(x: int, y: int):
 	grid[y][x]["layers"][0]["type"] = LayerType.STONE  # Top layer becomes stone
 	grid[y][x]["layers"][1]["type"] = LayerType.DIRT   # Middle layer becomes dirt
 	# Bottom layer stays EMPTY (for potential treasures)
+	# Mark that this cell originally had stone
+	grid[y][x]["had_stone"] = true
 
 # Calculate overlay dimensions based on viewport size
 func get_overlay_dimensions() -> Vector2:
@@ -242,53 +260,79 @@ func create_grid_visuals():
 			if show_cell_borders:
 				cell.add_theme_stylebox_override("panel", create_cell_style_box(cell.color))
 
-			# Optional dirt texture child (tiling) - inset by 1px to keep border visible
+			# Optional dirt texture child (spritesheet) - inset by 1px to keep border visible
 			if dirt_texture != null:
 				var dirt_tr := TextureRect.new()
 				dirt_tr.name = "DirtTexture"
-				# Use the full dirt texture and map exactly one copy to the inner cell via a UV-scaling shader
-				dirt_tr.texture = dirt_texture
-				dirt_tr.stretch_mode = TextureRect.STRETCH_TILE
-				# Enforce crisp pixels and texture repeat at the node level
+				dirt_tr.stretch_mode = TextureRect.STRETCH_SCALE
+				# Enforce crisp pixels
 				dirt_tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-				dirt_tr.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 				# Inset by 1px only if borders are enabled
 				var inset: int = 1 if show_cell_borders else 0
 				dirt_tr.position = Vector2(inset, inset)
 				dirt_tr.size = actual_cell_size - Vector2(inset * 2, inset * 2)
 				dirt_tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				# Shader to scale UVs so one 64x64 (or any size) texture fits the inner rect exactly
-				var shader_code := """
-				shader_type canvas_item;
-				uniform vec2 uv_scale = vec2(1.0, 1.0);
-				void fragment() {
-					COLOR = texture(TEXTURE, UV / uv_scale);
-				}
-				"""
-				var sh := Shader.new()
-				sh.code = shader_code
-				var mat := ShaderMaterial.new()
-				mat.shader = sh
-				# Inner size (accounts for optional inset)
-				var inner_size: Vector2 = actual_cell_size - Vector2(inset * 2, inset * 2)
-				# Compute UV scale so one full texture spans the inner rect
-				var tex_w: float = float(dirt_texture.get_width())
-				var tex_h: float = float(dirt_texture.get_height())
-				if tex_w <= 0.0: tex_w = inner_size.x
-				if tex_h <= 0.0: tex_h = inner_size.y
-				mat.set_shader_parameter("uv_scale", Vector2(inner_size.x / tex_w, inner_size.y / tex_h))
-				dirt_tr.material = mat
+				# Use AtlasTexture to select a region from the spritesheet
+				var atlas := AtlasTexture.new()
+				atlas.atlas = dirt_texture
+				# Default to frame 0 (plain)
+				atlas.region = Rect2(0, 0, DIRT_TILE_SIZE.x, DIRT_TILE_SIZE.y)
+				dirt_tr.texture = atlas
 				cell.add_child(dirt_tr)
-				# Initialize visibility/opacity based on current layer
+				# Initialize visibility based on current layer
 				var is_dirt: bool = current_layer["type"] == LayerType.DIRT
 				if is_dirt:
-					var init_opacity: float = max(CELL_OPACITY_MIN, current_layer["durability"] / 100.0)
 					dirt_tr.visible = true
-					dirt_tr.modulate = Color(1, 1, 1, init_opacity)
+					# Select frame based on state (0=plain,1=damaged,2=rubble,3=rubble+damaged)
+					var frame_idx = 0
+					var had_stone = grid[y][x]["had_stone"]
+					var rubble = had_stone and grid[y][x]["stone_broken"]
+					var damaged = current_layer["durability"] < 100
+					if rubble and damaged:
+						frame_idx = 3
+					elif rubble:
+						frame_idx = 2
+					elif damaged:
+						frame_idx = 1
+					(dirt_tr.texture as AtlasTexture).region = Rect2(frame_idx * DIRT_TILE_SIZE.x, 0, DIRT_TILE_SIZE.x, DIRT_TILE_SIZE.y)
 					# Make parent transparent so texture shows
 					cell.color = Color(0, 0, 0, 0)
 				else:
 					dirt_tr.visible = false
+
+			# Optional stone texture child (spritesheet) - inset by 1px to keep border visible
+			if stone_texture != null:
+				var stone_tr := TextureRect.new()
+				stone_tr.name = "StoneTexture"
+				stone_tr.stretch_mode = TextureRect.STRETCH_SCALE
+				# Enforce crisp pixels
+				stone_tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+				# Use same inset as dirt for consistent borders
+				var inset2: int = 1 if show_cell_borders else 0
+				stone_tr.position = Vector2(inset2, inset2)
+				stone_tr.size = actual_cell_size - Vector2(inset2 * 2, inset2 * 2)
+				stone_tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				# Use AtlasTexture to select a region from the spritesheet
+				var satlas := AtlasTexture.new()
+				satlas.atlas = stone_texture
+				# Default to frame 0 (solid)
+				satlas.region = Rect2(0, 0, STONE_TILE_SIZE.x, STONE_TILE_SIZE.y)
+				stone_tr.texture = satlas
+				cell.add_child(stone_tr)
+				# Initialize visibility based on current layer
+				var is_stone: bool = current_layer["type"] == LayerType.STONE
+				if is_stone:
+					stone_tr.visible = true
+					# Select frame based on state (0=solid,1=cracked)
+					var s_frame_idx = 0
+					var s_damaged = current_layer["durability"] < 100
+					if s_damaged:
+						s_frame_idx = 1
+					(stone_tr.texture as AtlasTexture).region = Rect2(s_frame_idx * STONE_TILE_SIZE.x, 0, STONE_TILE_SIZE.x, STONE_TILE_SIZE.y)
+					# Ensure parent is transparent so texture shows
+					cell.color = Color(0, 0, 0, 0)
+				else:
+					stone_tr.visible = false
 			
 			# Make cell clickable with direct reference to coordinates
 			cell.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -493,40 +537,44 @@ func on_cell_clicked(x: int, y: int):
 		damage_values = hammer_damage
 	
 	# Calculate durability cost based on actual cells that will be affected
-	var cells_that_will_be_damaged = 0
-	
-	# Check center cell - only count if it has damageable material
-	if can_cell_be_damaged(x, y):
-		cells_that_will_be_damaged += 1
-	
-	# For hammer, check surrounding cells too
-	if current_tool == ToolType.HAMMER:
-		# Check left cell
+	# We compute a weighted sum using the same multipliers as damage application.
+	var weighted_sum: float = 0.0
+	# Pattern per tool
+	if current_tool == ToolType.PICKAXE:
+		# Plus pattern: center 1.0, sides 0.5 (only add if damageable)
+		if can_cell_be_damaged(x, y):
+			weighted_sum += 1.0
 		if can_cell_be_damaged(x - 1, y):
-			cells_that_will_be_damaged += 1
-		# Check right cell
+			weighted_sum += 0.5
 		if can_cell_be_damaged(x + 1, y):
-			cells_that_will_be_damaged += 1
-		# Check up cell
+			weighted_sum += 0.5
 		if can_cell_be_damaged(x, y - 1):
-			cells_that_will_be_damaged += 1
-		# Check down cell 
+			weighted_sum += 0.5
 		if can_cell_be_damaged(x, y + 1):
-			cells_that_will_be_damaged += 1
+			weighted_sum += 0.5
+	else:
+		# HAMMER: 3x3 pattern, center and plus at 1.0, corners at 0.5
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var px = x + dx
+				var py = y + dy
+				var mult = 1.0 if (dx == 0 or dy == 0) else 0.5  # corners have both dx and dy non-zero
+				if can_cell_be_damaged(px, py):
+					weighted_sum += mult
 	
 	# Calculate dynamic durability cost
 	var durability_cost = 0
-	if cells_that_will_be_damaged > 0:
+	if weighted_sum > 0.0:
 		if current_tool == ToolType.PICKAXE:
-			# Pickaxe: simple percentage per cell
-			durability_cost = int(max_durability * (pickaxe_base_cost / 100.0) * cells_that_will_be_damaged)
+			# Pickaxe: cost scales by weighted cells
+			durability_cost = int(max_durability * (pickaxe_base_cost / 100.0) * weighted_sum)
 		else:  # HAMMER
-			# Hammer: base cost + additional cost per cell beyond the first
+			# Hammer: base cost + weighted additional work (excluding center cost baked into base)
+			# Estimate additional weight as (weighted_sum - 1.0), but not less than 0
+			var additional_weight = maxf(0.0, weighted_sum - 1.0)
 			var base_cost = max_durability * (hammer_base_cost_percent / 100.0)
-			var additional_cells = max(0, cells_that_will_be_damaged - 1)
-			var additional_cost = max_durability * (hammer_per_cell_cost_percent / 100.0) * additional_cells
+			var additional_cost = max_durability * (hammer_per_cell_cost_percent / 100.0) * additional_weight
 			var total_cost = base_cost + additional_cost
-			
 			# Cap at maximum cost
 			var max_cost = max_durability * (hammer_max_cost_percent / 100.0)
 			durability_cost = int(min(total_cost, max_cost))
@@ -538,7 +586,7 @@ func on_cell_clicked(x: int, y: int):
 			current_durability -= durability_cost
 			# Ensure durability never goes below 0
 			current_durability = max(0, current_durability)
-			print("Durability cost: ", durability_cost, " (", cells_that_will_be_damaged, " cells affected)")
+			print("Durability cost: ", durability_cost, " (weighted work: ", str(roundf(weighted_sum * 100.0) / 100.0), ")")
 		
 		update_durability_label()
 	
@@ -548,19 +596,27 @@ func on_cell_clicked(x: int, y: int):
 	
 	# Apply damage based on tool pattern
 	if current_tool == ToolType.PICKAXE:
-		# Pickaxe now only affects a single cell (already handled above)
-		# No additional cells are affected
-		pass
-	else:  # HAMMER
-		# Hammer now affects cells in a plus pattern
+		# Plus pattern: center 1.0, sides 0.5
 		if x > 0:
-			hit_cell(x - 1, y, damage_values)  # Left
+			hit_cell(x - 1, y, damage_values, 0.5)
 		if x < GRID_SIZE.x - 1:
-			hit_cell(x + 1, y, damage_values)  # Right
+			hit_cell(x + 1, y, damage_values, 0.5)
 		if y > 0:
-			hit_cell(x, y - 1, damage_values)  # Up
+			hit_cell(x, y - 1, damage_values, 0.5)
 		if y < GRID_SIZE.y - 1:
-			hit_cell(x, y + 1, damage_values)  # Down
+			hit_cell(x, y + 1, damage_values, 0.5)
+	else:  # HAMMER
+		# 3x3 pattern: center and plus at 1.0, corners at 0.5
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var px = x + dx
+				var py = y + dy
+				# Bounds check to avoid invalid indices at edges
+				if px < 0 or px >= GRID_SIZE.x or py < 0 or py >= GRID_SIZE.y:
+					continue
+				var mult = 1.0 if (dx == 0 or dy == 0) else 0.5
+				if not (dx == 0 and dy == 0):
+					hit_cell(px, py, damage_values, mult)
 	
 	# Check for game over
 	if current_durability <= 0:
@@ -592,6 +648,10 @@ func hit_cell(x: int, y: int, damage_values, multiplier: float = 1.0):
 	# Check if current layer is broken through
 	if current_layer["durability"] <= 0:
 		current_layer["revealed"] = true
+		
+		# If we just broke stone, mark rubble state for the dirt below
+		if current_layer["type"] == LayerType.STONE:
+			cell_data["stone_broken"] = true
 		
 		# Move to next layer if there is one
 		if current_layer_index < 2:
@@ -631,34 +691,71 @@ func update_cell_visual(x: int, y: int):
 	var cell_visual = cell_nodes[y][x]
 	# Grab optional dirt texture child
 	var dirt_tr: TextureRect = cell_visual.get_node_or_null("DirtTexture")
+	# Grab optional stone texture child
+	var stone_tr: TextureRect = cell_visual.get_node_or_null("StoneTexture")
 	
-	# Calculate opacity based on durability (0-100%)
-	var opacity = 1.0
-	if current_layer["type"] != LayerType.EMPTY and current_layer["type"] != LayerType.TREASURE:
-		opacity = max(CELL_OPACITY_MIN, current_layer["durability"] / 100.0)
-	
-	# Update visual based on layer type (with dirt texture support)
+	# Update visual based on layer type (with dirt spritesheet support)
 	var new_color: Color
 	if current_layer["type"] == LayerType.DIRT:
 		if dirt_tr:
-			# Show textured dirt with opacity and make parent transparent
+			# Show dirt spritesheet frame and make parent transparent
 			dirt_tr.visible = true
-			dirt_tr.modulate = Color(1, 1, 1, opacity)
+			if stone_tr:
+				stone_tr.visible = false
+			# Choose frame (0=plain,1=damaged,2=rubble,3=rubble+damaged)
+			var frame_idx = 0
+			var had_stone = grid[y][x]["had_stone"]
+			var rubble = had_stone and grid[y][x]["stone_broken"]
+			var damaged = current_layer["durability"] < 100
+			if rubble and damaged:
+				frame_idx = 3
+			elif rubble:
+				frame_idx = 2
+			elif damaged:
+				frame_idx = 1
+			var atlas2 := dirt_tr.texture as AtlasTexture
+			if atlas2 == null:
+				atlas2 = AtlasTexture.new()
+				atlas2.atlas = dirt_texture
+				dirt_tr.texture = atlas2
+			atlas2.region = Rect2(frame_idx * DIRT_TILE_SIZE.x, 0, DIRT_TILE_SIZE.x, DIRT_TILE_SIZE.y)
 			new_color = Color(0, 0, 0, 0)
 		else:
 			# Fallback to flat color if no texture assigned
-			new_color = Color(COLOR_DIRT.r, COLOR_DIRT.g, COLOR_DIRT.b, opacity)
+			new_color = COLOR_DIRT
 	elif current_layer["type"] == LayerType.STONE:
 		if dirt_tr:
 			dirt_tr.visible = false
-		new_color = Color(COLOR_STONE.r, COLOR_STONE.g, COLOR_STONE.b, opacity)
+		if stone_tr:
+			# Show stone spritesheet frame and make parent transparent
+			stone_tr.visible = true
+			var s_frame_idx = 0
+			var s_damaged = current_layer["durability"] < 100
+			if s_damaged:
+				s_frame_idx = 1
+			var satlas2 := stone_tr.texture as AtlasTexture
+			if satlas2 == null:
+				satlas2 = AtlasTexture.new()
+				satlas2.atlas = stone_texture
+				stone_tr.texture = satlas2
+			satlas2.region = Rect2(s_frame_idx * STONE_TILE_SIZE.x, 0, STONE_TILE_SIZE.x, STONE_TILE_SIZE.y)
+			new_color = Color(0, 0, 0, 0)
+		else:
+			# Fallback to flat color if no texture assigned
+			# Darken stone as durability decreases (factor between CELL_OPACITY_MIN and 1)
+			var factor: float = maxf(CELL_OPACITY_MIN, float(current_layer["durability"]) / 100.0)
+			new_color = Color(COLOR_STONE.r * factor, COLOR_STONE.g * factor, COLOR_STONE.b * factor, 1.0)
 	elif current_layer["type"] == LayerType.EMPTY:
 		if dirt_tr:
 			dirt_tr.visible = false
+		if stone_tr:
+			stone_tr.visible = false
 		new_color = COLOR_EMPTY
 	elif current_layer["type"] == LayerType.TREASURE:
 		if dirt_tr:
 			dirt_tr.visible = false
+		if stone_tr:
+			stone_tr.visible = false
 		# Color treasure cell by its treasure category
 		var treasure_color := COLOR_TREASURE_BG
 		# Find which placed treasure occupies this cell, if any

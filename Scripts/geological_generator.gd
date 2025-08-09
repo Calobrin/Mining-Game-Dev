@@ -11,6 +11,10 @@ enum FormationType {
 	STEPPED_TERRACES
 }
 
+# Minimum stone coverage guardrail (as fraction of total cells)
+const MIN_STONE_COVERAGE: float = 0.25  # 25% default; tweak to 0.20–0.30 as desired
+const COVERAGE_POSTPASS_MAX_ITERS: int = 8
+
 # Configuration for each formation type
 class FormationConfig:
 	var type: FormationType
@@ -45,6 +49,25 @@ static func generate_formations(grid: Array, grid_size: Vector2i, place_stone_ca
 	var target_formation_count = randi_range(2, 4)
 	var selected_formations = select_random_formations(available_formations, target_formation_count)
 	
+	# Guardrail: if only 2 were selected and one is Scattered Stones (a light filler),
+	# ensure we also include at least one macro formation (Veins/Blobs/Thick Strata)
+	if target_formation_count == 2:
+		var has_macro := false
+		for f in selected_formations:
+			if f.type == FormationType.HORIZONTAL_VEINS or f.type == FormationType.STONE_BLOBS or f.type == FormationType.THICK_STRATA:
+				has_macro = true
+				break
+		if not has_macro:
+			# Build remaining macro pool excluding already selected
+			var remaining_macro := []
+			for f in available_formations:
+				if (f.type == FormationType.HORIZONTAL_VEINS or f.type == FormationType.STONE_BLOBS or f.type == FormationType.THICK_STRATA) and not selected_formations.has(f):
+					remaining_macro.append(f)
+			if not remaining_macro.is_empty():
+				var extra = select_random_formations(remaining_macro, 1)
+				for e in extra:
+					selected_formations.append(e)
+	
 	print("Selected %d formations out of %d available:" % [selected_formations.size(), available_formations.size()])
 	for i in range(selected_formations.size()):
 		var formation = selected_formations[i]
@@ -66,6 +89,22 @@ static func generate_formations(grid: Array, grid_size: Vector2i, place_stone_ca
 				generate_angular_slabs(grid, grid_size, formation, place_stone_callback)
 			FormationType.STEPPED_TERRACES:
 				generate_stepped_terraces(grid, grid_size, formation, place_stone_callback)
+
+	# Post-pass: enforce minimum stone coverage
+	var coverage = _compute_stone_coverage(grid, grid_size)
+	print("Stone coverage after formations: %.1f%%" % [coverage * 100.0])
+	var iters = 0
+	while coverage < MIN_STONE_COVERAGE and iters < COVERAGE_POSTPASS_MAX_ITERS:
+		iters += 1
+		# Add a medium-strength blob and a round of scattered stones to boost coverage naturally
+		var boost_blob_cfg := FormationConfig.new(FormationType.STONE_BLOBS, 1.0, 1, 2, randf_range(0.9, 1.15))
+		generate_stone_blobs(grid, grid_size, boost_blob_cfg, place_stone_callback)
+		var boost_scatter_cfg := FormationConfig.new(FormationType.SCATTERED_STONES, 1.0, 6, 10, randf_range(0.6, 0.8))
+		generate_scattered_stones(grid, grid_size, boost_scatter_cfg, place_stone_callback)
+		coverage = _compute_stone_coverage(grid, grid_size)
+		print("  → Coverage boost #%d → %.1f%%" % [iters, coverage * 100.0])
+
+	print("Final stone coverage: %.1f%% (min target: %.0f%%)" % [coverage * 100.0, MIN_STONE_COVERAGE * 100.0])
 
 # Select random formations based on weighted probability
 static func select_random_formations(available: Array, target_count: int) -> Array:
@@ -246,3 +285,15 @@ static func generate_stepped_terraces(_grid: Array, grid_size: Vector2i, config:
 			# Offset next step slightly
 			current_x += randi_range(-2, 3)
 			current_x = max(0, min(current_x, grid_size.x - step_width))
+
+# Utility: compute current stone coverage (top layer stone only)
+static func _compute_stone_coverage(grid: Array, grid_size: Vector2i) -> float:
+	var stone_cells := 0
+	var total_cells := grid_size.x * grid_size.y
+	for y in range(grid_size.y):
+		for x in range(grid_size.x):
+			# Our grid stores layer types using LayerType enum from mining_minigame.gd
+			# We cannot import it here, so compare by integer: 0=STONE in that enum definition
+			if grid[y][x]["layers"][0]["type"] == 0:
+				stone_cells += 1
+	return float(stone_cells) / float(total_cells)

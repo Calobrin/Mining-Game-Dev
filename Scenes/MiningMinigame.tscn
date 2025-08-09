@@ -1,13 +1,15 @@
-[gd_scene load_steps=5 format=3 uid="uid://8laamg8l10ye"]
+[gd_scene load_steps=6 format=3 uid="uid://8laamg8l10ye"]
 
 [ext_resource type="Script" path="res://Scripts/mining_minigame.gd" id="1_yyqqf"]
 [ext_resource type="Texture2D" uid="uid://d0eubdi4cjt0i" path="res://textures/image assets/Pickaxe Icon.png" id="2_2oldh"]
-[ext_resource type="Texture2D" uid="uid://74dwjky02t7n" path="res://textures/image assets/Dirt mining tile.png" id="2_packj"]
+[ext_resource type="Texture2D" uid="uid://bgphbi243whan" path="res://textures/image assets/Dirt Mining cell 16x16.png" id="2_5gflm"]
 [ext_resource type="Texture2D" uid="uid://c3vgljojl6cxu" path="res://textures/image assets/Sledgehammer Icon.png" id="3_bratm"]
+[ext_resource type="Texture2D" uid="uid://c0c1ci7uvxpom" path="res://textures/image assets/stone mining cell 16x.png" id="3_ef7o8"]
 
 [node name="MiningMinigame" type="CanvasLayer"]
 script = ExtResource("1_yyqqf")
-dirt_texture = ExtResource("2_packj")
+dirt_texture = ExtResource("2_5gflm")
+stone_texture = ExtResource("3_ef7o8")
 
 [node name="MainContainer" type="Control" parent="."]
 layout_mode = 3
