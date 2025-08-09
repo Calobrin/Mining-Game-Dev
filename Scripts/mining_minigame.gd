@@ -28,6 +28,9 @@ const GRID_SIZE = Vector2i(17, 10)  # 17x10 grid				# No space between cells - c
 @export_range(0.5, 0.9, 0.05) var overlay_height_percentage: float = 0.8  # Percentage of screen height
 @export var min_cell_size: Vector2 = Vector2(30, 30)  # Minimum cell size to ensure visibility
 
+# Visual toggles
+@export var show_cell_borders: bool = false  # Toggle grid cell borders on/off
+
 # Layer types
 enum LayerType { STONE, DIRT, TREASURE, EMPTY }
 
@@ -68,6 +71,9 @@ var hammer_damage = {
 
 # Visual elements
 var cell_nodes = []  # Stores references to the cell UI nodes
+
+# Dirt texture (assign in Inspector to use a tiled texture for dirt cells)
+@export var dirt_texture: Texture2D
 
 # Called when the node enters the scene tree for the first time
 func _ready():
@@ -214,6 +220,8 @@ func create_grid_visuals():
 			# Prevent the container from stretching this cell
 			cell.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			cell.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			# Clip child drawing to the cell's rect so textures never spill outside
+			cell.clip_contents = true
 			# Position cell with centering offset
 			cell.position = calculate_cell_position(x, y)
 			
@@ -227,8 +235,57 @@ func create_grid_visuals():
 			else:
 				cell.color = COLOR_EMPTY
 			
-			# Add subtle border for visual distinction
-			cell.add_theme_stylebox_override("panel", create_cell_style_box(cell.color))
+			# Optional border for visual distinction
+			if show_cell_borders:
+				cell.add_theme_stylebox_override("panel", create_cell_style_box(cell.color))
+
+			# Optional dirt texture child (tiling) - inset by 1px to keep border visible
+			if dirt_texture != null:
+				var dirt_tr := TextureRect.new()
+				dirt_tr.name = "DirtTexture"
+				# Use the full dirt texture and map exactly one copy to the inner cell via a UV-scaling shader
+				dirt_tr.texture = dirt_texture
+				dirt_tr.stretch_mode = TextureRect.STRETCH_TILE
+				# Enforce crisp pixels and texture repeat at the node level
+				dirt_tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+				dirt_tr.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+				# Inset by 1px only if borders are enabled
+				var inset: int = 1 if show_cell_borders else 0
+				dirt_tr.position = Vector2(inset, inset)
+				dirt_tr.size = actual_cell_size - Vector2(inset * 2, inset * 2)
+				dirt_tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				# Shader to scale UVs so one 64x64 (or any size) texture fits the inner rect exactly
+				var shader_code := """
+				shader_type canvas_item;
+				uniform vec2 uv_scale = vec2(1.0, 1.0);
+				void fragment() {
+					COLOR = texture(TEXTURE, UV / uv_scale);
+				}
+				"""
+				var sh := Shader.new()
+				sh.code = shader_code
+				var mat := ShaderMaterial.new()
+				mat.shader = sh
+				# Inner size (accounts for optional inset)
+				var inner_size: Vector2 = actual_cell_size - Vector2(inset * 2, inset * 2)
+				# Compute UV scale so one full texture spans the inner rect
+				var tex_w: float = float(dirt_texture.get_width())
+				var tex_h: float = float(dirt_texture.get_height())
+				if tex_w <= 0.0: tex_w = inner_size.x
+				if tex_h <= 0.0: tex_h = inner_size.y
+				mat.set_shader_parameter("uv_scale", Vector2(inner_size.x / tex_w, inner_size.y / tex_h))
+				dirt_tr.material = mat
+				cell.add_child(dirt_tr)
+				# Initialize visibility/opacity based on current layer
+				var is_dirt: bool = current_layer["type"] == LayerType.DIRT
+				if is_dirt:
+					var init_opacity: float = max(CELL_OPACITY_MIN, current_layer["durability"] / 100.0)
+					dirt_tr.visible = true
+					dirt_tr.modulate = Color(1, 1, 1, init_opacity)
+					# Make parent transparent so texture shows
+					cell.color = Color(0, 0, 0, 0)
+				else:
+					dirt_tr.visible = false
 			
 			# Make cell clickable with direct reference to coordinates
 			cell.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -559,28 +616,44 @@ func update_cell_visual(x: int, y: int):
 	var current_layer_index = cell_data["current_layer"]
 	var current_layer = cell_data["layers"][current_layer_index]
 	var cell_visual = cell_nodes[y][x]
+	# Grab optional dirt texture child
+	var dirt_tr: TextureRect = cell_visual.get_node_or_null("DirtTexture")
 	
 	# Calculate opacity based on durability (0-100%)
 	var opacity = 1.0
 	if current_layer["type"] != LayerType.EMPTY and current_layer["type"] != LayerType.TREASURE:
 		opacity = max(CELL_OPACITY_MIN, current_layer["durability"] / 100.0)
 	
-	# Update color based on layer type
+	# Update visual based on layer type (with dirt texture support)
 	var new_color: Color
 	if current_layer["type"] == LayerType.DIRT:
-		new_color = Color(COLOR_DIRT.r, COLOR_DIRT.g, COLOR_DIRT.b, opacity)
+		if dirt_tr:
+			# Show textured dirt with opacity and make parent transparent
+			dirt_tr.visible = true
+			dirt_tr.modulate = Color(1, 1, 1, opacity)
+			new_color = Color(0, 0, 0, 0)
+		else:
+			# Fallback to flat color if no texture assigned
+			new_color = Color(COLOR_DIRT.r, COLOR_DIRT.g, COLOR_DIRT.b, opacity)
 	elif current_layer["type"] == LayerType.STONE:
+		if dirt_tr:
+			dirt_tr.visible = false
 		new_color = Color(COLOR_STONE.r, COLOR_STONE.g, COLOR_STONE.b, opacity)
 	elif current_layer["type"] == LayerType.EMPTY:
+		if dirt_tr:
+			dirt_tr.visible = false
 		new_color = COLOR_EMPTY
 	elif current_layer["type"] == LayerType.TREASURE:
+		if dirt_tr:
+			dirt_tr.visible = false
 		new_color = COLOR_TREASURE_BG
-	
-	# Update both the color property and the style box
+
+	# Apply color and optional border
 	cell_visual.color = new_color
-	
-	# Update the style box to maintain border with new color
-	cell_visual.add_theme_stylebox_override("panel", create_cell_style_box(new_color))
+	if show_cell_borders:
+		cell_visual.add_theme_stylebox_override("panel", create_cell_style_box(new_color))
+	else:
+		cell_visual.remove_theme_stylebox_override("panel")
 
 # Reveal a treasure at the specified grid position (Battleship-style partial reveals)
 func reveal_treasure(x: int, y: int):

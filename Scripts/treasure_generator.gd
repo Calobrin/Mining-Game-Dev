@@ -7,8 +7,8 @@ extends RefCounted
 
 # Treasure size configurations with weights (higher weight = more common) (calculated by adding up and normalizing)
 const TREASURE_SIZES = [
-	{"size": Vector2i(1, 1), "weight": 19.5, "name": "Small"},       	
-	{"size": Vector2i(2, 2), "weight": 20.0, "name": "Medium"},      	
+	{"size": Vector2i(1, 1), "weight": 35.5, "name": "Small"},       	
+	{"size": Vector2i(2, 2), "weight": 30.0, "name": "Medium"},      	
 	#{"size": Vector2i(1, 2), "weight": 15.0, "name": "Tall"},       	
 	#{"size": Vector2i(2, 1), "weight": 10.0, "name": "Wide"},       	
 	#{"size": Vector2i(3, 2), "weight": 3.0, "name": "Large"},       	
