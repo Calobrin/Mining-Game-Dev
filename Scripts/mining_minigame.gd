@@ -14,6 +14,9 @@ const COLOR_DIRT = Color(0.6, 0.4, 0.2)
 const COLOR_STONE = Color(0.48, 0.48, 0.48)  # Realistic neutral stone gray
 const COLOR_EMPTY = Color(0.2, 0.2, 0.2)
 const COLOR_TREASURE_BG = Color(0.8, 0.7, 0.2)
+const COLOR_TREASURE_ROCK = Color(0.28, 0.28, 0.28)   # Darker than stone
+const COLOR_TREASURE_METAL = Color(0.95, 0.55, 0.20)  # Copper-like orange
+const COLOR_TREASURE_GEM = Color(0.60, 0.85, 1.00)    # Light blue
 const COLOR_BORDER = Color(0.3, 0.3, 0.3)
 
 # Grid properties
@@ -443,6 +446,18 @@ func is_cell_fully_revealed(x: int, y: int) -> bool:
 	# A cell is fully revealed if it's at the bottom layer (2) and that layer is revealed
 	return current_layer_index == 2 and current_layer["revealed"]
 
+# Helper: determine if a cell is fully excavated (all damageable material removed)
+# Rules:
+# - Dirt-only cells: excavated when layer 0 (DIRT) is revealed
+# - Stone + Dirt cells: excavated when layer 0 (STONE) and layer 1 (DIRT) are both revealed
+func is_cell_excavated(x: int, y: int) -> bool:
+	var layers = grid[y][x]["layers"]
+	var has_stone = layers[0]["type"] == LayerType.STONE
+	if has_stone:
+		return layers[0]["revealed"] and layers[1]["revealed"]
+	else:
+		return layers[0]["revealed"]
+
 # Helper function to check if a cell has damageable material (dirt or stone) in its current layer
 func can_cell_be_damaged(x: int, y: int) -> bool:
 	# Check bounds
@@ -600,9 +615,7 @@ func check_complete_excavation():
 	
 	for y in range(GRID_SIZE.y):
 		for x in range(GRID_SIZE.x):
-			var cell_data = grid[y][x]
-			# Cell is fully excavated if we've reached the bottom layer (layer 2) and it's revealed
-			if cell_data["current_layer"] >= 2 and cell_data["layers"][2]["revealed"]:
+			if is_cell_excavated(x, y):
 				fully_excavated_cells += 1
 	
 	# If all cells are fully excavated, end the game
@@ -646,7 +659,15 @@ func update_cell_visual(x: int, y: int):
 	elif current_layer["type"] == LayerType.TREASURE:
 		if dirt_tr:
 			dirt_tr.visible = false
-		new_color = COLOR_TREASURE_BG
+		# Color treasure cell by its treasure category
+		var treasure_color := COLOR_TREASURE_BG
+		# Find which placed treasure occupies this cell, if any
+		for treasure in treasures:
+			var placed_treasure = treasure["placed_treasure"]
+			if placed_treasure != null and placed_treasure.occupies_position(Vector2i(x, y)):
+				treasure_color = TreasureGenerator.get_treasure_color_safe(placed_treasure.treasure_data)
+				break
+		new_color = treasure_color
 
 	# Apply color and optional border
 	cell_visual.color = new_color
@@ -860,18 +881,7 @@ func calculate_cell_position(grid_x: int, grid_y: int, size_multiplier: float = 
 		centering_offset.y + grid_y * actual_cell_size.y + actual_cell_size.y * (1.0 - size_multiplier) * 0.5
 	)
 
-# Helper function to get color based on treasure value
-func get_treasure_color(treasure_data) -> Color:
-	var price = get_treasure_price(treasure_data)
-	
-	if price > 100.0:  # High value - gold/yellow
-		return Color(0.9, 0.85, 0.2)
-	elif price > 75.0:  # Medium-high value - blue
-		return Color(0.2, 0.6, 0.9)
-	elif price > 50.0:  # Medium value - green
-		return Color(0.2, 0.8, 0.4)
-	else:  # Lower value - pink/purple
-		return Color(0.8, 0.5, 0.9)
+# (Removed) get_treasure_color: use TreasureGenerator.get_treasure_color_safe instead to avoid duplication
 
 # Helper function to create style box for cells (reduces object creation)
 func create_cell_style_box(bg_color: Color) -> StyleBoxFlat:

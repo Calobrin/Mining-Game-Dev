@@ -66,9 +66,10 @@ anchor_bottom = 0.5
 offset_left = -101.0
 offset_top = -208.0
 offset_right = -24.0
-offset_bottom = 192.0
+offset_bottom = 42.0
 grow_horizontal = 0
 grow_vertical = 2
+scale = Vector2(0.993074, 0.994872)
 theme_override_constants/separation = 15
 
 [node name="PickaxeTool" type="Button" parent="MainContainer/ToolContainer"]
@@ -77,8 +78,8 @@ size_flags_vertical = 3
 text = "Pickaxe"
 
 [node name="Pickaxe Icon" type="Sprite2D" parent="MainContainer/ToolContainer/PickaxeTool"]
-position = Vector2(38, 45)
-scale = Vector2(0.235, 0.235)
+position = Vector2(38.265, 22.1134)
+scale = Vector2(0.236639, 0.236211)
 texture = ExtResource("2_2oldh")
 
 [node name="HammerTool" type="Button" parent="MainContainer/ToolContainer"]
@@ -87,8 +88,8 @@ size_flags_vertical = 3
 text = "Hammer"
 
 [node name="Hammer Icon" type="Sprite2D" parent="MainContainer/ToolContainer/HammerTool"]
-position = Vector2(38, 45)
-scale = Vector2(0.235, 0.235)
+position = Vector2(38.265, 24.8041)
+scale = Vector2(0.236639, 0.236211)
 texture = ExtResource("3_bratm")
 
 [node name="CloseButton" type="Button" parent="MainContainer"]

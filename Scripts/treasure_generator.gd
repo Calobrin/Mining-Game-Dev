@@ -7,14 +7,14 @@ extends RefCounted
 
 # Treasure size configurations with weights (higher weight = more common) (calculated by adding up and normalizing)
 const TREASURE_SIZES = [
-	{"size": Vector2i(1, 1), "weight": 35.5, "name": "Small"},       	
-	{"size": Vector2i(2, 2), "weight": 30.0, "name": "Medium"},      	
+	{"size": Vector2i(1, 1), "weight": 30.0, "name": "Small"},       	
+	{"size": Vector2i(2, 2), "weight": 35.0, "name": "Medium"},      	
 	#{"size": Vector2i(1, 2), "weight": 15.0, "name": "Tall"},       	
 	#{"size": Vector2i(2, 1), "weight": 10.0, "name": "Wide"},       	
 	#{"size": Vector2i(3, 2), "weight": 3.0, "name": "Large"},       	
 	#{"size": Vector2i(2, 3), "weight": 1.5, "name": "Tall Large"},  	
-	{"size": Vector2i(3, 3), "weight": 4.0, "name": "Large"},       	
-	{"size": Vector2i(4, 4), "weight": 0.3, "name": "Huge"}             
+	{"size": Vector2i(3, 3), "weight": 10.0, "name": "Large"},       	
+	{"size": Vector2i(4, 4), "weight": 1.0, "name": "Huge"}             
 ]
 
 # Debug flag - set to false when using sprite assets instead of colored rectangles
@@ -281,19 +281,27 @@ static func get_treasure_price_safe(treasure_data) -> float:
 	return 0.0
 
 static func get_treasure_color_safe(treasure_data) -> Color:
-	var price = get_treasure_price_safe(treasure_data)
-	
-	# Color based on value ranges
-	if price >= 100.0:
-		return Color(1.0, 0.2, 1.0)  # Magenta - Ultra rare
-	elif price >= 80.0:
-		return Color(1.0, 0.4, 0.0)  # Orange - Very rare
-	elif price >= 60.0:
-		return Color(0.2, 0.8, 1.0)  # Cyan - Rare
-	elif price >= 40.0:
-		return Color(0.2, 1.0, 0.2)  # Green - Uncommon
-	else:
-		return Color(0.8, 0.7, 0.2)  # Yellow - Common
+	# Color based on category, with a safe fallback
+	var category := ""
+	if treasure_data == null:
+		category = ""
+	elif treasure_data is Dictionary:
+		category = String(treasure_data.get("category", ""))
+	elif treasure_data.has_method("get_category"):
+		category = String(treasure_data.get_category())
+	elif "category" in treasure_data:
+		category = String(treasure_data.category)
+
+	match category:
+		"rocks_stones":
+			return Color(0.85, 0.85, 0.90)    # Silver
+		"metals_ores":
+			return Color(0.95, 0.55, 0.20)    # Copper/orange
+		"crystals_gems":
+			return Color(0.60, 0.85, 1.00)    # Light blue
+		_:
+			# Fallback to previous common yellow if missing/unknown
+			return Color(0.9, 0.85, 0.2)
 
 static func is_rare_treasure(treasure_data) -> bool:
 	return get_treasure_price_safe(treasure_data) >= 80.0

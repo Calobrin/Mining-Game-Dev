@@ -2,8 +2,8 @@ extends Node
 # This file contains all the mining item data in a single place
 # No need for resource generation or importing - just pure data
 
-# Path to the JSON data file
-const ITEMS_DATA_PATH = "res://Data/mining_items.json"
+# Path to the JSON data file (match actual case-sensitive path)
+const ITEMS_DATA_PATH = "res://data/mining_items.json"
 
 # Class to represent a mining item
 class MiningItem:
@@ -77,6 +77,13 @@ var all_items: Array[MiningItem] = []
 # Dictionary for quick lookup by ID
 var items_by_id: Dictionary = {}
 
+# Optional category weighting (future-proofing)
+# Loaded from JSON top-level keys:
+# - "category_weights": { category: weight }
+# - "category_weights_by_mine": { mine_id_string: { category: weight } }
+var global_category_weights: Dictionary = {}
+var per_mine_category_weights: Dictionary = {}
+
 func _ready():
 	load_items_from_json()
 	
@@ -113,6 +120,10 @@ func load_items_from_json():
 		create_fallback_data()
 		return
 	
+	# Load optional category weights if present (safe to be absent)
+	global_category_weights = data.get("category_weights", {})
+	per_mine_category_weights = data.get("category_weights_by_mine", {})
+
 	# Convert JSON data to MiningItem objects
 	for item_data in data["items"]:
 		var item = MiningItem.new(
@@ -130,6 +141,27 @@ func load_items_from_json():
 	
 	print("Successfully loaded " + str(all_items.size()) + " items from JSON")
 
+# Helper: get category weight for a given mine with sensible defaults
+func _get_category_weight_for_mine(category: String, mine_id: int, eligible_by_cat: Dictionary) -> int:
+	# Per-mine override takes priority (mine_id as string key for JSON compatibility)
+	var mine_key := str(mine_id)
+	if per_mine_category_weights.has(mine_key):
+		var mine_weights: Dictionary = per_mine_category_weights[mine_key]
+		if mine_weights.has(category):
+			return int(mine_weights[category])
+
+	# Global category weight
+	if global_category_weights.has(category):
+		return int(global_category_weights[category])
+
+	# Fallback: preserve current behavior by using the sum of item weights
+	# This makes results identical to the old system when no category weights are provided
+	var sum_weight := 0
+	if eligible_by_cat.has(category):
+		for item in eligible_by_cat[category]:
+			sum_weight += max(0, item.base_weight)
+	return sum_weight
+
 # Fallback data in case JSON loading fails
 func create_fallback_data():
 	print("Using hardcoded fallback data...")
@@ -142,23 +174,65 @@ func create_fallback_data():
 	]
 
 # Get a random mining item based on the specified mine location
+# Now supports optional category-first weighted selection with full backward compatibility
 func get_random_item(mine_id: int) -> MiningItem:
-	# Find the maximum range value
-	var total_range = 0
+	# Build eligible items grouped by category
+	var eligible_by_cat: Dictionary = {}
 	for item in all_items:
-		if can_appear_in_mine(item.mine_locations, mine_id) and item.end_range > total_range:
-			total_range = item.end_range
-	
-	# Generate a random roll within the range
-	var roll = randi_range(1, total_range)
-	
-	# Find which item this roll corresponds to
-	for item in all_items:
-		if can_appear_in_mine(item.mine_locations, mine_id) and roll >= item.start_range and roll <= item.end_range:
-			return item
-	
-	# Fallback (should never happen if ranges are contiguous)
-	return all_items[0] if all_items.size() > 0 else null
+		if can_appear_in_mine(item.mine_locations, mine_id):
+			if not eligible_by_cat.has(item.category):
+				eligible_by_cat[item.category] = []
+			eligible_by_cat[item.category].append(item)
+
+	# Safety: no eligible categories
+	if eligible_by_cat.is_empty():
+		return all_items[0] if all_items.size() > 0 else null
+
+	# Determine category weights (respect per-mine and global configs; fallback preserves old behavior)
+	var categories: Array = eligible_by_cat.keys()
+	var cat_total := 0
+	var cat_weights: Dictionary = {}
+	for cat in categories:
+		var w: int = max(0, _get_category_weight_for_mine(cat, mine_id, eligible_by_cat))
+		cat_weights[cat] = w
+		cat_total += w
+
+	# If total category weight is zero (e.g., all configured as 0), pick a category uniformly
+	var chosen_category: String = ""
+	if cat_total <= 0:
+		chosen_category = categories[randi() % categories.size()]
+	else:
+		var roll_cat := randi_range(1, cat_total)
+		var acc_cat := 0
+		for cat in categories:
+			acc_cat += int(cat_weights[cat])
+			if roll_cat <= acc_cat:
+				chosen_category = cat
+				break
+
+	# Select item within chosen category using existing item weights
+	# Convert untyped Array from dictionary into a typed Array[MiningItem]
+	var src_items: Array = eligible_by_cat[chosen_category]
+	var items: Array[MiningItem] = []
+	for _it in src_items:
+		items.append(_it as MiningItem)
+	var item_total := 0
+	for it in items:
+		item_total += max(0, it.base_weight)
+
+	# If all item weights are zero, choose uniformly; otherwise weighted by base_weight
+	if item_total <= 0:
+		return items[randi() % items.size()]
+	else:
+		var roll := randi_range(1, item_total)
+		var acc := 0
+		for it in items:
+			acc += max(0, it.base_weight)
+			if roll <= acc:
+				return it
+
+	# Fallback (shouldn't happen)
+	return items.back()
 
 # Get an item by its ID
 func get_item_by_id(id: String) -> MiningItem:
