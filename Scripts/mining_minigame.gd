@@ -30,6 +30,7 @@ const GRID_SIZE = Vector2i(17, 10)  # 17x10 grid				# No space between cells - c
 @export_range(0.5, 0.9, 0.05) var overlay_width_percentage: float = 0.85  # Percentage of screen width
 @export_range(0.5, 0.9, 0.05) var overlay_height_percentage: float = 0.8  # Percentage of screen height
 @export var min_cell_size: Vector2 = Vector2(30, 30)  # Minimum cell size to ensure visibility
+@export var grid_backdrop_color: Color = Color(0.2, 0.2, 0.2)  # Color behind the grid (for empty/crystal margins)
 
 # Visual toggles
 @export var show_cell_borders: bool = false  # Toggle grid cell borders on/off
@@ -97,6 +98,26 @@ func _ready():
 	
 	# Connect to window resize signals to handle resolution changes
 	get_viewport().size_changed.connect(on_viewport_resized)
+	
+	# Ensure UI overlays (e.g., game over panel) render above the grid
+	var ui_container := $MainContainer/"UI Elements"
+	if ui_container:
+		ui_container.z_index = 1000
+		ui_container.z_as_relative = false
+
+	# Keep grid container firmly in the background of this CanvasLayer
+	var gridc: Control = $MainContainer/MainGameArea/GridContainer
+	if gridc:
+		gridc.z_as_relative = true
+		gridc.z_index = 0
+
+	# Optional: ensure cursor reticle always renders above grid
+	var cursor_reticle := get_node_or_null("ReticleLayer/Reticle")
+	if cursor_reticle:
+		cursor_reticle.z_as_relative = false
+		cursor_reticle.z_index = 1005
+		if cursor_reticle is Control:
+			cursor_reticle.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	
 	# Check for MiningItemDatabase AutoLoad
 	if get_node_or_null("/root/MiningItemDatabase") == null:
@@ -254,7 +275,8 @@ func create_grid_visuals():
 			elif current_layer["type"] == LayerType.STONE:
 				cell.color = COLOR_STONE
 			else:
-				cell.color = COLOR_EMPTY
+				# EMPTY cells are fully transparent so the unified backdrop shows through
+				cell.color = Color(0, 0, 0, 0)
 			
 			# Optional border for visual distinction
 			if show_cell_borders:
@@ -357,16 +379,28 @@ func create_grid_visuals():
 	
 	# Add a target reticle for aiming
 	var reticle = create_reticle()
-	$MainContainer/MainGameArea/GridContainer.add_child(reticle)
+	# Place reticle on its own CanvasLayer to guarantee it draws above the grid
+	var reticle_layer := get_node_or_null("ReticleLayer")
+	if reticle_layer == null:
+		reticle_layer = CanvasLayer.new()
+		reticle_layer.name = "ReticleLayer"
+		# Ensure reticle draws above results overlay (which uses layer 10)
+		reticle_layer.layer = 20
+		add_child(reticle_layer)
+	reticle_layer.add_child(reticle)
 
 # Create an aiming reticle that follows the mouse
 func create_reticle():
 	var reticle = Control.new()
 	reticle.name = "Reticle"
 	reticle.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	reticle.z_as_relative = false
+	reticle.z_index = 1005
 	
 	# Create a cross shape using lines
 	var reticle_lines = Line2D.new()
+	reticle_lines.z_as_relative = false
+	reticle_lines.z_index = 1005
 	reticle_lines.width = 2
 	reticle_lines.default_color = Color(1, 0, 0, 0.8)  # Red
 	
@@ -376,6 +410,8 @@ func create_reticle():
 	
 	# Add a second line for vertical part
 	var vertical_line = Line2D.new()
+	vertical_line.z_as_relative = false
+	vertical_line.z_index = 1005
 	vertical_line.width = 2
 	vertical_line.default_color = Color(1, 0, 0, 0.8)
 	vertical_line.add_point(Vector2(0, -10))
@@ -389,12 +425,14 @@ func create_reticle():
 # Process mouse movement to update reticle position
 func _process(_delta):
 	# Update reticle position if it exists
-	var reticle = $MainContainer/MainGameArea/GridContainer.get_node_or_null("Reticle")
+	var reticle = get_node_or_null("ReticleLayer/Reticle")
 	if reticle:
+		# Reticle is on a CanvasLayer (screen space). Convert GridContainer-local mouse to SCREEN coordinates
+		# using the canvas-aware global transform so scaling/offsets are handled.
 		var grid_container = $MainContainer/MainGameArea/GridContainer
-		# Get mouse position relative to the grid container, accounting for all UI offsets
-		var mouse_pos = grid_container.get_local_mouse_position()
-		reticle.position = mouse_pos
+		var local_mouse = grid_container.get_local_mouse_position()
+		var screen_pos: Vector2 = grid_container.get_global_transform_with_canvas() * local_mouse
+		reticle.position = screen_pos
 
 # Update durability label
 func update_durability_label():
@@ -406,10 +444,21 @@ func update_durability_label():
 
 # Handle viewport resizing
 func on_viewport_resized():
-	# DISABLED: This function was destroying treasures when window resized
-	# The grid works fine without recreation - Godot handles UI scaling automatically
-	print("Viewport resized - resize handler disabled to preserve game state")
-	return
+	# Only adjust the backdrop size/position to match the grid; do not rebuild the grid
+	var gridc := $MainContainer/MainGameArea/GridContainer
+	if gridc:
+		var backdrop: ColorRect = gridc.get_node_or_null("GridBackdrop")
+		if backdrop:
+			var cell_sz := get_actual_cell_size()
+			var offset := get_grid_centering_offset()
+			backdrop.position = offset
+			backdrop.size = Vector2(GRID_SIZE.x * cell_sz.x, GRID_SIZE.y * cell_sz.y)
+			backdrop.color = grid_backdrop_color
+			backdrop.z_as_relative = true
+			backdrop.z_index = -100
+			backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Optional: debug
+	# print("Viewport resized - backdrop updated")
 
 # Handle close button press
 func on_close_button_pressed():
@@ -438,6 +487,33 @@ func start_game():
 	# Initialize new grid and visuals
 	init_grid()
 	create_grid_visuals()
+	# Add a backdrop behind all cells so transparent crystal margins match empty tiles
+	var gridc_back := $MainContainer/MainGameArea/GridContainer
+	if gridc_back:
+		var backdrop := gridc_back.get_node_or_null("GridBackdrop")
+		if grid_backdrop_color.a <= 0.001:
+			# Transparent backdrop requested: remove existing backdrop if present
+			if backdrop:
+				backdrop.queue_free()
+		else:
+			# Opaque/semi-opaque backdrop requested: ensure it exists and is sized
+			if backdrop == null:
+				var cr := ColorRect.new()
+				cr.name = "GridBackdrop"
+				gridc_back.add_child(cr)
+				# Ensure it renders behind all cell children
+				gridc_back.move_child(cr, 0)
+			# Size and position the backdrop to the exact grid bounds
+			var cell_sz := get_actual_cell_size()
+			var offset := get_grid_centering_offset()
+			var bd: ColorRect = gridc_back.get_node_or_null("GridBackdrop")
+			if bd:
+				bd.position = offset
+				bd.size = Vector2(GRID_SIZE.x * cell_sz.x, GRID_SIZE.y * cell_sz.y)
+				bd.color = grid_backdrop_color
+				bd.z_as_relative = true
+				bd.z_index = -100
+				bd.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	# Generate random number of treasures within the specified range
 	var treasure_count = randi_range(min_treasures, max_treasures)
 	place_treasures(treasure_count)
@@ -449,8 +525,13 @@ func start_game():
 	set_current_tool(current_tool)
 	
 	# Show tutorial text if desired
-	print("Mining game started! Break through stone (4 hits) to reveal dirt (1 hit), and dirt to find treasures!")
+	print("Mining game started! Break through stone and dirt to find treasures!")
 	print("Pickaxe: Single cell | Hammer: Plus shape (+) | Grid: " + str(GRID_SIZE.x) + " x " + str(GRID_SIZE.y))
+
+	# If a reticle already exists (e.g., after a retry without full process restart), ensure it is visible
+	var reticle_existing := get_node_or_null("ReticleLayer/Reticle")
+	if reticle_existing:
+		reticle_existing.visible = true
 
 # Place treasures using the new TreasureGenerator system
 func place_treasures(count: int):
@@ -697,15 +778,30 @@ func update_cell_visual(x: int, y: int):
 	var dirt_tr: TextureRect = cell_visual.get_node_or_null("DirtTexture")
 	# Grab optional stone texture child
 	var stone_tr: TextureRect = cell_visual.get_node_or_null("StoneTexture")
+
+	# All grid visuals should use relative z so UI with absolute z can render above
+	cell_visual.z_as_relative = true
+	if dirt_tr:
+		dirt_tr.z_as_relative = true
+	if stone_tr:
+		stone_tr.z_as_relative = true
+	
+	# Default base z for the cell
+	cell_visual.z_index = 0
 	
 	# Update visual based on layer type (with dirt spritesheet support)
 	var new_color: Color
+	# Track crystal ownership across branches for stylebox decisions
+	var belongs_to_crystal := false
+	var is_crystal_cell := false
 	if current_layer["type"] == LayerType.DIRT:
 		if dirt_tr:
 			# Show dirt spritesheet frame and make parent transparent
 			dirt_tr.visible = true
+			dirt_tr.z_index = 2
 			if stone_tr:
 				stone_tr.visible = false
+				stone_tr.z_index = 0
 			# Choose frame (0=plain,1=damaged,2=rubble,3=rubble+damaged)
 			var frame_idx = 0
 			var had_stone = grid[y][x]["had_stone"]
@@ -723,16 +819,21 @@ func update_cell_visual(x: int, y: int):
 				atlas2.atlas = dirt_texture
 				dirt_tr.texture = atlas2
 			atlas2.region = Rect2(frame_idx * DIRT_TILE_SIZE.x, 0, DIRT_TILE_SIZE.x, DIRT_TILE_SIZE.y)
-			new_color = Color(0, 0, 0, 0)
+			# Keep the base panel opaque so any transparent pixels in the texture don't reveal content beneath
+			new_color = COLOR_DIRT
 		else:
 			# Fallback to flat color if no texture assigned
 			new_color = COLOR_DIRT
+			# Ensure flat-colored dirt still occludes crystals
+			cell_visual.z_index = 2
 	elif current_layer["type"] == LayerType.STONE:
 		if dirt_tr:
 			dirt_tr.visible = false
+			dirt_tr.z_index = 0
 		if stone_tr:
 			# Show stone spritesheet frame and make parent transparent
 			stone_tr.visible = true
+			stone_tr.z_index = 2
 			var s_frame_idx = 0
 			var s_damaged = current_layer["durability"] < 100
 			if s_damaged:
@@ -743,39 +844,66 @@ func update_cell_visual(x: int, y: int):
 				satlas2.atlas = stone_texture
 				stone_tr.texture = satlas2
 			satlas2.region = Rect2(s_frame_idx * STONE_TILE_SIZE.x, 0, STONE_TILE_SIZE.x, STONE_TILE_SIZE.y)
-			new_color = Color(0, 0, 0, 0)
+			# Keep the base panel opaque so any transparent pixels in the texture don't reveal content beneath
+			var factor_visible: float = maxf(CELL_OPACITY_MIN, float(current_layer["durability"]) / 100.0)
+			new_color = Color(COLOR_STONE.r * factor_visible, COLOR_STONE.g * factor_visible, COLOR_STONE.b * factor_visible, 1.0)
 		else:
 			# Fallback to flat color if no texture assigned
 			# Darken stone as durability decreases (factor between CELL_OPACITY_MIN and 1)
 			var factor: float = maxf(CELL_OPACITY_MIN, float(current_layer["durability"]) / 100.0)
 			new_color = Color(COLOR_STONE.r * factor, COLOR_STONE.g * factor, COLOR_STONE.b * factor, 1.0)
+			# Ensure flat-colored stone still occludes crystals
+			cell_visual.z_index = 2
 	elif current_layer["type"] == LayerType.EMPTY:
 		if dirt_tr:
 			dirt_tr.visible = false
+			dirt_tr.z_index = 0
 		if stone_tr:
 			stone_tr.visible = false
-		new_color = COLOR_EMPTY
+			stone_tr.z_index = 0
+		cell_visual.z_index = 0
+		# EMPTY cells are always fully transparent so the unified backdrop/UI shows through
+		belongs_to_crystal = false
+		new_color = Color(0, 0, 0, 0)
 	elif current_layer["type"] == LayerType.TREASURE:
 		if dirt_tr:
 			dirt_tr.visible = false
+			dirt_tr.z_index = 0
 		if stone_tr:
 			stone_tr.visible = false
-		# Color treasure cell by its treasure category
+			stone_tr.z_index = 0
+		# For crystals/gems, make the cell transparent (image visual will be drawn above)
 		var treasure_color := COLOR_TREASURE_BG
 		# Find which placed treasure occupies this cell, if any
 		for treasure in treasures:
 			var placed_treasure = treasure["placed_treasure"]
 			if placed_treasure != null and placed_treasure.occupies_position(Vector2i(x, y)):
-				treasure_color = TreasureGenerator.get_treasure_color_safe(placed_treasure.treasure_data)
+				if TreasureGenerator._is_crystals_gems(placed_treasure.treasure_data):
+					new_color = Color(0, 0, 0, 0)
+					is_crystal_cell = true
+				else:
+					treasure_color = TreasureGenerator.get_treasure_color_safe(placed_treasure.treasure_data)
+					new_color = treasure_color
 				break
-		new_color = treasure_color
 
 	# Apply color and optional border
 	cell_visual.color = new_color
-	if show_cell_borders:
+	# Avoid any panel tint on crystal-owned cells (both EMPTY and TREASURE transparent cases)
+	var crystal_owned := false
+	if current_layer["type"] == LayerType.EMPTY and belongs_to_crystal:
+		crystal_owned = true
+	elif current_layer["type"] == LayerType.TREASURE and is_crystal_cell:
+		crystal_owned = true
+	
+	if crystal_owned:
+		cell_visual.remove_theme_stylebox_override("panel")
+	elif show_cell_borders:
 		cell_visual.add_theme_stylebox_override("panel", create_cell_style_box(new_color))
 	else:
 		cell_visual.remove_theme_stylebox_override("panel")
+
+	# Final safety: enforce layering rules after individual updates
+	normalize_grid_layering()
 
 # Reveal a treasure at the specified grid position (Battleship-style partial reveals)
 func reveal_treasure(x: int, y: int):
@@ -784,50 +912,69 @@ func reveal_treasure(x: int, y: int):
 		var placed_treasure = treasure["placed_treasure"]
 		
 		# Check if this treasure occupies the clicked position
-		if placed_treasure.occupies_position(Vector2i(x, y)):
+		if placed_treasure != null and placed_treasure.occupies_position(Vector2i(x, y)):
 			# Mark this specific cell as having its treasure layer revealed
 			var has_stone = grid[y][x]["layers"][0]["type"] == LayerType.STONE
 			var treasure_layer = 2 if has_stone else 1
 			grid[y][x]["layers"][treasure_layer]["revealed"] = true
-			
-			# Check if ALL cells of this treasure are now excavated
-			var all_cells_excavated = true
-			for grid_pos in placed_treasure.grid_positions:
-				var gx = grid_pos.x
-				var gy = grid_pos.y
-				var cell_has_stone = grid[gy][gx]["layers"][0]["type"] == LayerType.STONE
-				var cell_treasure_layer = 2 if cell_has_stone else 1
-				
-				# Check if this cell's treasure layer is excavated
-				if not grid[gy][gx]["layers"][cell_treasure_layer]["revealed"]:
-					all_cells_excavated = false
-					break
-			
-			# Only mark treasure as "found" if ALL cells are excavated
-			if all_cells_excavated:
-				treasure["revealed"] = true
-				placed_treasure.revealed = true
-				
-				print("💎 TREASURE FOUND! You fully excavated a %s %s!" % [
-					TreasureGenerator.get_size_name(placed_treasure.size),
-					TreasureGenerator.get_treasure_name_safe(placed_treasure.treasure_data)
-				])
-			else:
-				# Partial hit - give feedback but don't award the treasure
-				var excavated_cells = 0
-				for grid_pos in placed_treasure.grid_positions:
-					var gx = grid_pos.x
-					var gy = grid_pos.y
-					var cell_has_stone = grid[gy][gx]["layers"][0]["type"] == LayerType.STONE
-					var cell_treasure_layer = 2 if cell_has_stone else 1
-					if grid[gy][gx]["layers"][cell_treasure_layer]["revealed"]:
-						excavated_cells += 1
-				
-				print("⚡ HIT! You found part of a treasure (%d/%d cells excavated). Keep digging!" % [
-					excavated_cells, placed_treasure.grid_positions.size()
-				])
-			
-			break
+			# Mark the treasure as revealed for scoring
+			treasure["revealed"] = true
+			# Immediately create the crystal visual once a crystal cell is revealed
+			if placed_treasure.visual_node == null:
+				var cat_dbg := ""
+				if placed_treasure.treasure_data != null:
+					cat_dbg = TreasureGenerator._get_category_safe(placed_treasure.treasure_data)
+				print("Reveal: attempting visual for ", TreasureGenerator.get_treasure_name_safe(placed_treasure.treasure_data), " category=", cat_dbg)
+				var cell_size_v := get_actual_cell_size()
+				var parent_container_v: Control = $MainContainer/MainGameArea/GridContainer
+				var visual_v := TreasureGenerator.create_treasure_visual(placed_treasure, cell_size_v, parent_container_v)
+				if visual_v != null:
+					visual_v.position = calculate_cell_position(placed_treasure.top_left.x, placed_treasure.top_left.y)
+					parent_container_v.add_child(visual_v)
+					parent_container_v.move_child(visual_v, parent_container_v.get_child_count() - 1)
+					print("DEBUG: Added treasure visual (immediate) for ", TreasureGenerator.get_treasure_name_safe(placed_treasure.treasure_data))
+					normalize_grid_layering()
+					# Force-refresh all cells in this treasure's footprint so covering dirt/stone
+					# immediately re-apply opaque color/z-order and occlude the visual where needed.
+					for gp in placed_treasure.grid_positions:
+						update_cell_visual(gp.x, gp.y)
+					print("DEBUG: forced refresh of treasure footprint complete")
+			# Return regardless of whether a visual was created (non-crystal categories)
+			return
+
+	print("ERROR: reveal_treasure() could not find placed treasure at ", Vector2i(x, y))
+
+# Enforce predictable z-order across the entire grid
+func normalize_grid_layering():
+	var gridc: Control = $MainContainer/MainGameArea/GridContainer
+	if gridc:
+		gridc.z_as_relative = true
+		gridc.z_index = 0
+	for y in range(GRID_SIZE.y):
+		for x in range(GRID_SIZE.x):
+			if y >= cell_nodes.size():
+				continue
+			var row = cell_nodes[y]
+			if x >= row.size():
+				continue
+			var cv: Control = row[x]
+			if cv == null:
+				continue
+			cv.z_as_relative = true
+			# Base cell at 0 for empty/treasure; leave as set for dirt/stone flat-color branch
+			var cell_data = grid[y][x]
+			var current_layer_index = cell_data["current_layer"]
+			var ltype = cell_data["layers"][current_layer_index]["type"]
+			if ltype == LayerType.EMPTY or ltype == LayerType.TREASURE:
+				cv.z_index = 0
+			var dt: TextureRect = cv.get_node_or_null("DirtTexture")
+			if dt:
+				dt.z_as_relative = true
+				dt.z_index = 2 if dt.visible else 0
+			var st: TextureRect = cv.get_node_or_null("StoneTexture")
+			if st:
+				st.z_as_relative = true
+				st.z_index = 2 if st.visible else 0
 
 # Set the current mining tool
 func set_current_tool(tool_type):
@@ -903,30 +1050,65 @@ func end_game():
 			else:
 				print("WARNING: Could not find treasure data for revealed treasure")
 	
-	# Create results popup
-	var results = Label.new()
+	# Build a full-screen overlay with dim background and a centered results panel
+	var overlay := Control.new()
+	overlay.name = "ResultsOverlay"
+	overlay.z_as_relative = false
+	overlay.z_index = 1100
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+
+	# Dim background
+	var dim := ColorRect.new()
+	dim.color = Color(0,0,0,0.6)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(dim)
+
+	# Centered panel container
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(center)
+
+	var panel := Panel.new()
+	panel.name = "ResultsPanel"
+	panel.custom_minimum_size = Vector2(420, 240)
+	center.add_child(panel)
+
+	var vbox := VBoxContainer.new()
+	vbox.anchor_left = 0
+	vbox.anchor_top = 0
+	vbox.anchor_right = 1
+	vbox.anchor_bottom = 1
+	vbox.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	vbox.grow_vertical = Control.GROW_DIRECTION_BOTH
+	vbox.add_theme_constant_override("separation", 16)
+	panel.add_child(vbox)
+
+	var results := Label.new()
 	results.text = "Mining Complete!\n\nTreasures Found: " + str(revealed_count) + "\nTotal Value: " + str(total_value)
 	results.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	results.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	
-	var panel = Panel.new()
-	panel.name = "ResultsPanel"
-	panel.size = Vector2(400, 300)
-	panel.position = (get_viewport().get_visible_rect().size - panel.size) / 2
-	
-	var vbox = VBoxContainer.new()
-	vbox.size = panel.size
 	vbox.add_child(results)
-	
+
 	# Add a retry button
-	var retry_button = Button.new()
+	var retry_button := Button.new()
 	retry_button.text = "Try Again"
 	retry_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	retry_button.pressed.connect(func(): get_tree().reload_current_scene())
 	vbox.add_child(retry_button)
-	
-	panel.add_child(vbox)
-	add_child(panel)
+
+	# Put overlay on its own CanvasLayer so nothing from the grid can overdraw it
+	var results_layer := CanvasLayer.new()
+	results_layer.layer = 10
+	results_layer.name = "ResultsCanvasLayer"
+	results_layer.add_child(overlay)
+	add_child(results_layer)
+
+	# Keep using the custom crosshair cursor over the results overlay
+	# Ensure the OS cursor stays hidden and the reticle is visible above everything
+	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+	var reticle_to_show := get_node_or_null("ReticleLayer/Reticle")
+	if reticle_to_show:
+		reticle_to_show.visible = true
 
 # Close the minigame and restore cursor
 func close_minigame():

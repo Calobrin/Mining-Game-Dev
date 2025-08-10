@@ -20,6 +20,9 @@ const TREASURE_SIZES = [
 # Debug flag - set to false when using sprite assets instead of colored rectangles
 const SHOW_DEBUG_LABELS = true
 
+# Single placeholder texture for crystals/gems
+const CRYSTAL_TEX: Texture2D = preload("res://textures/image assets/crystal concept.png")
+
 # Data structure for a placed treasure
 class PlacedTreasure:
 	var treasure_data  # The actual treasure item (from database)
@@ -189,49 +192,41 @@ static func get_treasure_from_database(mine_id: int, rare_gems_placed: int, max_
 
 # Create visual representation for a multi-cell treasure
 static func create_treasure_visual(treasure: PlacedTreasure, cell_size: Vector2, parent_container: Control) -> Control:
-	var visual = ColorRect.new()
-	
-	# Size spans multiple cells
-	visual.size = Vector2(treasure.size.x * cell_size.x, treasure.size.y * cell_size.y) * 0.8
-	
-	# Find the GridContainer within the parent to get its offset
-	var grid_container = parent_container.get_node("GridContainer")
-	var grid_offset = Vector2.ZERO
-	if grid_container != null:
-		grid_offset = grid_container.position
-	
-	# Center the treasure visual across all occupied grid cells
-	# Calculate the center point of the treasure's grid area
-	var treasure_center_x = treasure.top_left.x + (treasure.size.x - 1) / 2.0
-	var treasure_center_y = treasure.top_left.y + (treasure.size.y - 1) / 2.0
-	
-	# Position the visual so it's centered on the treasure area, accounting for grid offset
-	visual.position = Vector2(
-		grid_offset.x + treasure_center_x * cell_size.x - visual.size.x / 2.0,
-		grid_offset.y + treasure_center_y * cell_size.y - visual.size.y / 2.0
-	)
-	
-	# Color based on treasure value
-	visual.color = get_treasure_color_safe(treasure.treasure_data)
-	
-	# Disable mouse input so it doesn't block grid clicks
+	# Only crystals/gems use an image; others return null (caller can skip)
+	var cat := _get_category_safe(treasure.treasure_data)
+	if not _is_crystals_gems(treasure.treasure_data):
+		print("TreasureVisual: skip (not crystals_gems). name=", get_treasure_name_safe(treasure.treasure_data), " category=", cat)
+		return null
+
+	var visual := Control.new()
+	visual.clip_contents = true
+	visual.z_index = 1
+	visual.z_as_relative = true
+	visual.modulate = Color(1, 1, 1, 1)
 	visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	
-	# Add label with treasure name and size info (only in debug mode)
+	visual.size = Vector2(treasure.size.x * cell_size.x, treasure.size.y * cell_size.y)
+
+	var tr := TextureRect.new()
+	tr.name = "TreasureTexture"
+	tr.texture = CRYSTAL_TEX
+	tr.stretch_mode = TextureRect.STRETCH_SCALE
+	tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	tr.modulate = Color(1, 1, 1, 1)
+	tr.size = visual.size
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	visual.add_child(tr)
+	print("TreasureVisual: created crystal image. name=", get_treasure_name_safe(treasure.treasure_data), " category=", cat, " size=", treasure.size)
+
 	if SHOW_DEBUG_LABELS:
-		var label = Label.new()
+		var label := Label.new()
 		label.text = get_treasure_name_safe(treasure.treasure_data)
-		if treasure.size != Vector2i(1, 1):
-			label.text += "\n" + get_size_name(treasure.size)
-		
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		label.size = visual.size
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		
 		visual.add_child(label)
+
 	treasure.visual_node = visual
-	
 	return visual
 
 # Check if any cell of a treasure has been revealed
@@ -279,6 +274,22 @@ static func get_treasure_price_safe(treasure_data) -> float:
 	elif "base_price" in treasure_data:
 		return treasure_data.base_price
 	return 0.0
+
+# Helper to read a treasure's category safely
+static func _get_category_safe(treasure_data) -> String:
+	if treasure_data == null:
+		return ""
+	if treasure_data is Dictionary:
+		return String(treasure_data.get("category", ""))
+	elif treasure_data.has_method("get_category"):
+		return String(treasure_data.get_category())
+	elif "category" in treasure_data:
+		return String(treasure_data.category)
+	return ""
+
+# True if the treasure is part of the crystals/gems category
+static func _is_crystals_gems(treasure_data) -> bool:
+	return _get_category_safe(treasure_data) == "crystals_gems"
 
 static func get_treasure_color_safe(treasure_data) -> Color:
 	# Color based on category, with a safe fallback
