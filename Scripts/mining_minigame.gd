@@ -707,6 +707,23 @@ func on_cell_clicked(x: int, y: int):
 	if current_durability <= 0:
 		end_game()
 
+# Determine if a placed treasure is fully claimed (all its cells revealed at treasure layer)
+func is_treasure_fully_claimed(placed_treasure) -> bool:
+	if placed_treasure == null:
+		return false
+	for gp in placed_treasure.grid_positions:
+		var x = gp.x
+		var y = gp.y
+		# Bounds safety
+		if x < 0 or x >= GRID_SIZE.x or y < 0 or y >= GRID_SIZE.y:
+			return false
+		var cell_data = grid[y][x]
+		var has_stone = cell_data["layers"][0]["type"] == LayerType.STONE
+		var treasure_layer = 2 if has_stone else 1
+		if not cell_data["layers"][treasure_layer]["revealed"]:
+			return false
+	return true
+
 # Hit a cell with a tool, applying damage
 func hit_cell(x: int, y: int, damage_values, multiplier: float = 1.0):
 	var cell_data = grid[y][x]
@@ -1036,19 +1053,14 @@ func end_game():
 	var total_value = 0
 	
 	for treasure in treasures:
-		# Only count treasures that were actually revealed by digging
-		if treasure["revealed"]:
+		var placed_treasure = treasure["placed_treasure"]
+		if is_treasure_fully_claimed(placed_treasure):
 			revealed_count += 1
-			
-			# Get treasure data from the PlacedTreasure object
-			var placed_treasure = treasure["placed_treasure"]
-			var treasure_data = placed_treasure.treasure_data
-			
-			# Add value if treasure data exists and is valid
+			var treasure_data = placed_treasure.treasure_data if placed_treasure != null else null
 			if treasure_data != null:
 				total_value += TreasureGenerator.get_treasure_price_safe(treasure_data)
 			else:
-				print("WARNING: Could not find treasure data for revealed treasure")
+				print("WARNING: Could not find treasure data for fully-claimed treasure")
 	
 	# Build a full-screen overlay with dim background and a centered results panel
 	var overlay := Control.new()
