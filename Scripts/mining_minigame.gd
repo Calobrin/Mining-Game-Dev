@@ -525,9 +525,8 @@ func on_cell_clicked(x: int, y: int):
 	var current_layer_index = cell_data["current_layer"]
 	var current_layer = cell_data["layers"][current_layer_index]
 	
-	# Skip if this is the bottom layer and already revealed (empty or revealed treasure)
-	if current_layer_index == 2 and current_layer["revealed"]:
-		return
+	# NOTE: Do NOT early-return on fully revealed bottom cells.
+	# We allow clicking empty cells so adjacent damageable tiles can still be hit.
 		
 	# Get the current tool damage values
 	var damage_values
@@ -567,7 +566,8 @@ func on_cell_clicked(x: int, y: int):
 	if weighted_sum > 0.0:
 		if current_tool == ToolType.PICKAXE:
 			# Pickaxe: cost scales by weighted cells
-			durability_cost = int(max_durability * (pickaxe_base_cost / 100.0) * weighted_sum)
+			# Use ceiling and enforce minimum 1 when any work is done to avoid 0-cost on small weights (e.g., 0.5)
+			durability_cost = max(1, ceili(max_durability * (pickaxe_base_cost / 100.0) * weighted_sum))
 		else:  # HAMMER
 			# Hammer: base cost + weighted additional work (excluding center cost baked into base)
 			# Estimate additional weight as (weighted_sum - 1.0), but not less than 0
@@ -577,7 +577,7 @@ func on_cell_clicked(x: int, y: int):
 			var total_cost = base_cost + additional_cost
 			# Cap at maximum cost
 			var max_cost = max_durability * (hammer_max_cost_percent / 100.0)
-			durability_cost = int(min(total_cost, max_cost))
+			durability_cost = ceili(min(total_cost, max_cost))
 		
 		# Apply durability cost (unless dev mode is enabled)
 		if dev_mode_unlimited_durability:
@@ -590,6 +590,10 @@ func on_cell_clicked(x: int, y: int):
 		
 		update_durability_label()
 	
+	# If nothing around is damageable, stop here to avoid wasted work
+	if weighted_sum <= 0.0:
+		return
+
 	# Apply damage to cells based on tool pattern
 	# Apply damage to the center cell first
 	hit_cell(x, y, damage_values)

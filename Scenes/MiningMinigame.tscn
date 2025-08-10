@@ -44,11 +44,18 @@ text = "Durability: 100"
 horizontal_alignment = 1
 
 [node name="MainGameArea" type="HBoxContainer" parent="MainContainer"]
-layout_mode = 2
-offset_left = 78.0
-offset_top = 43.0
-offset_right = 1078.0
-offset_bottom = 567.0
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -500.0
+offset_top = -262.0
+offset_right = 500.0
+offset_bottom = 262.0
+grow_horizontal = 2
+grow_vertical = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 15
 alignment = 1
