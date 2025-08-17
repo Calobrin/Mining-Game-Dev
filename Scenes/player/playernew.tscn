@@ -35,5 +35,4 @@ spring_length = 3.0
 margin = 1.0
 
 [node name="Camera3D" type="Camera3D" parent="Camera Origin/SpringArm3D"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 3)
-near = 1.0
+near = 0.5
