@@ -6,7 +6,10 @@ const JUMP_VELOCITY = 4.0
 @onready var camera_script: Node = $"Camera Origin"  # Reference to the camera script
 
 func _ready() -> void:
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE  # Set the mouse mode to visible by default
+	# Show the cursor only if no camera mouse mode is active on scene load
+	# This avoids overriding the camera's capture when holding a button through a scene change
+	if not Input.is_action_pressed("Right Click") and not Input.is_action_pressed("Left Click"):
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _input(event: InputEvent) -> void:
 	# Pass input events to the camera

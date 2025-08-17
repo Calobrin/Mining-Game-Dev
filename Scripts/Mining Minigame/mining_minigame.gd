@@ -1,4 +1,5 @@
 extends CanvasLayer
+class_name MiningMinigame
 
 # ============================================================================
 # CONSTANTS - Centralized values for easy tweaking
@@ -206,20 +207,11 @@ func get_overlay_dimensions() -> Vector2:
 
 # Calculate the offset needed to center the grid within the available space
 func get_grid_centering_offset() -> Vector2:
-	var actual_cell_size = get_actual_cell_size()
-	
-	# Calculate the total grid size
-	var total_grid_width = GRID_SIZE.x * actual_cell_size.x + (GRID_SIZE.x - 1)
-	var total_grid_height = GRID_SIZE.y * actual_cell_size.y + (GRID_SIZE.y - 1)
-	
-	# Use the overlay dimensions (which are based on viewport size) for centering
-	var overlay_dims = get_overlay_dimensions()
-	
-	# Calculate offset to center the grid within the overlay space
-	var offset_x = (overlay_dims.x - total_grid_width) / 2.0
-	var offset_y = (overlay_dims.y - total_grid_height) / 2.0
-	
-	return Vector2(offset_x, offset_y)
+	# Centering is now handled by the scene layout:
+	# - `MainGameArea` is a CenterContainer
+	# - `GridContainer` uses SHRINK_CENTER size flags and its custom_minimum_size
+	# Therefore, no extra offset is needed at the child level.
+	return Vector2.ZERO
 
 # Calculate actual cell size based on settings and screen resolution
 func get_actual_cell_size() -> Vector2:
@@ -447,29 +439,72 @@ func on_viewport_resized():
 	# Only adjust the backdrop size/position to match the grid; do not rebuild the grid
 	var gridc := $MainContainer/MainGameArea/GridContainer
 	if gridc:
+		var cell_sz := get_actual_cell_size()
+		# Ensure the container advertises the grid's true size so CenterContainer can center it
+		gridc.custom_minimum_size = Vector2(GRID_SIZE.x * cell_sz.x, GRID_SIZE.y * cell_sz.y)
 		var backdrop: ColorRect = gridc.get_node_or_null("GridBackdrop")
 		if backdrop:
-			var cell_sz := get_actual_cell_size()
-			var offset := get_grid_centering_offset()
-			backdrop.position = offset
-			backdrop.size = Vector2(GRID_SIZE.x * cell_sz.x, GRID_SIZE.y * cell_sz.y)
+			backdrop.position = Vector2.ZERO
+			backdrop.size = gridc.custom_minimum_size
 			backdrop.color = grid_backdrop_color
 			backdrop.z_as_relative = true
 			backdrop.z_index = -100
 			backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Reflow all grid cells and treasure visuals so they stay centered and scaled
+	reflow_grid_layout()
 	# Optional: debug
-	# print("Viewport resized - backdrop updated")
+	# print("Viewport resized - backdrop updated and reflowed")
+
+# Recompute positions/sizes for all cells and treasure visuals based on current viewport
+func reflow_grid_layout():
+	var cell_sz := get_actual_cell_size()
+
+	# Update each grid cell's size and position
+	for y in range(GRID_SIZE.y):
+		if y >= cell_nodes.size():
+			break
+		var row = cell_nodes[y]
+		for x in range(GRID_SIZE.x):
+			if x >= row.size():
+				continue
+			var cell: Control = row[x]
+			if cell == null:
+				continue
+			cell.size = cell_sz
+			cell.position = calculate_cell_position(x, y)
+			# Adjust child textures to keep 1px border (when enabled)
+			var inset: int = 1 if show_cell_borders else 0
+			var dirt_tr: TextureRect = cell.get_node_or_null("DirtTexture")
+			if dirt_tr:
+				dirt_tr.position = Vector2(inset, inset)
+				dirt_tr.size = cell_sz - Vector2(inset * 2, inset * 2)
+			var stone_tr: TextureRect = cell.get_node_or_null("StoneTexture")
+			if stone_tr:
+				var inset2: int = 1 if show_cell_borders else 0
+				stone_tr.position = Vector2(inset2, inset2)
+				stone_tr.size = cell_sz - Vector2(inset2 * 2, inset2 * 2)
+
+	# Update any multi-cell treasure visuals (e.g., crystals)
+	for treasure in treasures:
+		var placed_treasure = treasure.get("placed_treasure", null)
+		if placed_treasure == null:
+			continue
+		var visual: Control = placed_treasure.visual_node
+		if visual == null:
+			continue
+		visual.size = Vector2(placed_treasure.size.x * cell_sz.x, placed_treasure.size.y * cell_sz.y)
+		visual.position = calculate_cell_position(placed_treasure.top_left.x, placed_treasure.top_left.y)
+		var ttex: TextureRect = visual.get_node_or_null("TreasureTexture")
+		if ttex:
+			ttex.size = visual.size
+
+	# Ensure z-ordering remains consistent after size/visibility changes
+	normalize_grid_layering()
 
 # Handle close button press
 func on_close_button_pressed():
-	# This is where you'd add code to hide the minigame and return to the main game
-	print("Close button pressed - minigame should close")
-	# For testing only - eventually remove this line
-	visible = false
-	# In your actual implementation, you'd use something like:
-	# hide()
-	# or emit a signal that the parent can listen for
-	# emit_signal("minigame_closed")
+	# Route to the unified close flow
+	close_minigame()
 
 # Start a new game
 func start_game():
@@ -486,8 +521,7 @@ func start_game():
 	
 	# Initialize new grid and visuals
 	init_grid()
-	create_grid_visuals()
-	# Add a backdrop behind all cells so transparent crystal margins match empty tiles
+	# Prepare container sizing and backdrop BEFORE creating cells so centering is immediate
 	var gridc_back := $MainContainer/MainGameArea/GridContainer
 	if gridc_back:
 		var backdrop := gridc_back.get_node_or_null("GridBackdrop")
@@ -503,17 +537,20 @@ func start_game():
 				gridc_back.add_child(cr)
 				# Ensure it renders behind all cell children
 				gridc_back.move_child(cr, 0)
-			# Size and position the backdrop to the exact grid bounds
+			# Size the GridContainer and the backdrop to the exact grid bounds
 			var cell_sz := get_actual_cell_size()
-			var offset := get_grid_centering_offset()
+			# Ensure the container advertises the grid's true size so CenterContainer can center it
+			gridc_back.custom_minimum_size = Vector2(GRID_SIZE.x * cell_sz.x, GRID_SIZE.y * cell_sz.y)
 			var bd: ColorRect = gridc_back.get_node_or_null("GridBackdrop")
 			if bd:
-				bd.position = offset
-				bd.size = Vector2(GRID_SIZE.x * cell_sz.x, GRID_SIZE.y * cell_sz.y)
+				bd.position = Vector2.ZERO
+				bd.size = gridc_back.custom_minimum_size
 				bd.color = grid_backdrop_color
 				bd.z_as_relative = true
 				bd.z_index = -100
 				bd.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Now create visuals (cells) after container is sized
+	create_grid_visuals()
 	# Generate random number of treasures within the specified range
 	var treasure_count = randi_range(min_treasures, max_treasures)
 	place_treasures(treasure_count)
@@ -527,6 +564,8 @@ func start_game():
 	# Show tutorial text if desired
 	print("Mining game started! Break through stone and dirt to find treasures!")
 	print("Pickaxe: Single cell | Hammer: Plus shape (+) | Grid: " + str(GRID_SIZE.x) + " x " + str(GRID_SIZE.y))
+	# Notify globally that the minigame opened
+	Signals.emit_minigame_opened()
 
 	# If a reticle already exists (e.g., after a retry without full process restart), ensure it is visible
 	var reticle_existing := get_node_or_null("ReticleLayer/Reticle")
@@ -604,7 +643,7 @@ func on_cell_clicked(x: int, y: int):
 	# Get current layer of the clicked cell
 	var cell_data = grid[y][x]
 	var current_layer_index = cell_data["current_layer"]
-	var current_layer = cell_data["layers"][current_layer_index]
+	var _current_layer = cell_data["layers"][current_layer_index]
 	
 	# NOTE: Do NOT early-return on fully revealed bottom cells.
 	# We allow clicking empty cells so adjacent damageable tiles can still be hit.
@@ -1127,6 +1166,8 @@ func close_minigame():
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	# You can add additional cleanup here if needed
 	# For now, just hide the minigame or go back to main scene
+	# Notify globally that the minigame closed
+	Signals.emit_minigame_closed()
 	queue_free()  # Remove the minigame scene
 
 # Ensure cursor is restored when leaving the minigame

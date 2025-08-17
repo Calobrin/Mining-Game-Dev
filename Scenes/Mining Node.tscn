@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3 uid="uid://cvy7iljwh1a61"]
 
 [ext_resource type="Texture2D" uid="uid://d0eubdi4cjt0i" path="res://textures/image assets/Pickaxe Icon.png" id="1_w6bst"]
-[ext_resource type="Script" path="res://Scripts/mining_node.gd" id="2_jk8md"]
+[ext_resource type="Script" path="res://Scripts/World/mining_node.gd" id="2_jk8md"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_tylqm"]
 

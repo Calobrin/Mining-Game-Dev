@@ -1,8 +1,8 @@
 [gd_scene load_steps=11 format=3 uid="uid://cfcx4nltl7bem"]
 
 [ext_resource type="PackedScene" uid="uid://dbkh65ymg3hyp" path="res://blender models/MG Town.glb" id="1_ygyvx"]
-[ext_resource type="PackedScene" uid="uid://idpgh2bb3r0t" path="res://Scenes/playernew.tscn" id="2_7oduu"]
-[ext_resource type="Script" path="res://Scripts/TownSceneScript.gd" id="2_14fw5"]
+[ext_resource type="PackedScene" uid="uid://idpgh2bb3r0t" path="res://Scenes/player/playernew.tscn" id="2_7oduu"]
+[ext_resource type="Script" path="res://Scripts/World/TownSceneScript.gd" id="2_14fw5"]
 [ext_resource type="PackedScene" uid="uid://b4x11wc33w26x" path="res://Scenes/interactable_button.tscn" id="3_um32k"]
 [ext_resource type="PackedScene" uid="uid://ntn7tba50ogf" path="res://Scenes/spawnpoint.tscn" id="4_pg0md"]
 
@@ -46,6 +46,9 @@ shape = SubResource("BoxShape3D_hsu4u")
 
 [node name="Boulder" parent="." index="3"]
 transform = Transform3D(5.35, 0, 0, 0, 1.07, 0, 0, 0, 5.85714, 88.9987, 2.28093, 94.7919)
+
+[node name="CollisionShape3D" parent="Track supports/StaticBody3D" index="0"]
+physics_interpolation_mode = 2
 
 [node name="Tunnel Blocker" type="StaticBody3D" parent="Mine Hub" index="1"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.85836, -2.8247, -0.0856056)

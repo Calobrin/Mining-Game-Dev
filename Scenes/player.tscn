@@ -1,7 +1,7 @@
-[gd_scene load_steps=5 format=3 uid="uid://cnvs8a3s5i58n"]
+[gd_scene load_steps=5 format=3 uid="uid://tu6a48t21set"]
 
-[ext_resource type="Script" path="res://Scripts/player.gd" id="1_l80pt"]
-[ext_resource type="Script" path="res://Scripts/camera.gd" id="2_camera"]
+[ext_resource type="Script" path="res://Scripts/Player/player.gd" id="1_l80pt"]
+[ext_resource type="Script" path="res://Scripts/Player/camera.gd" id="2_camera"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_u8l7t"]
 

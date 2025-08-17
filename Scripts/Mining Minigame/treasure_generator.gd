@@ -191,7 +191,7 @@ static func get_treasure_from_database(mine_id: int, rare_gems_placed: int, max_
 		return null
 
 # Create visual representation for a multi-cell treasure
-static func create_treasure_visual(treasure: PlacedTreasure, cell_size: Vector2, parent_container: Control) -> Control:
+static func create_treasure_visual(treasure: PlacedTreasure, cell_size: Vector2, _parent_container: Control) -> Control:
 	# Only crystals/gems use an image; others return null (caller can skip)
 	var cat := _get_category_safe(treasure.treasure_data)
 	if not _is_crystals_gems(treasure.treasure_data):
@@ -206,15 +206,15 @@ static func create_treasure_visual(treasure: PlacedTreasure, cell_size: Vector2,
 	visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visual.size = Vector2(treasure.size.x * cell_size.x, treasure.size.y * cell_size.y)
 
-	var tr := TextureRect.new()
-	tr.name = "TreasureTexture"
-	tr.texture = CRYSTAL_TEX
-	tr.stretch_mode = TextureRect.STRETCH_SCALE
-	tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	tr.modulate = Color(1, 1, 1, 1)
-	tr.size = visual.size
-	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	visual.add_child(tr)
+	var tex_rect := TextureRect.new()
+	tex_rect.name = "TreasureTexture"
+	tex_rect.texture = CRYSTAL_TEX
+	tex_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	tex_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	tex_rect.modulate = Color(1, 1, 1, 1)
+	tex_rect.size = visual.size
+	tex_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	visual.add_child(tex_rect)
 	print("TreasureVisual: created crystal image. name=", get_treasure_name_safe(treasure.treasure_data), " category=", cat, " size=", treasure.size)
 
 	if SHOW_DEBUG_LABELS:

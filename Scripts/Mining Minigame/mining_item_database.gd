@@ -1,4 +1,5 @@
 extends Node
+class_name MiningItems
 # This file contains all the mining item data in a single place
 # No need for resource generation or importing - just pure data
 

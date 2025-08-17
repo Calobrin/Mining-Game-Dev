@@ -1,6 +1,6 @@
 [gd_scene load_steps=6 format=3 uid="uid://8laamg8l10ye"]
 
-[ext_resource type="Script" path="res://Scripts/mining_minigame.gd" id="1_yyqqf"]
+[ext_resource type="Script" path="res://Scripts/Mining Minigame/mining_minigame.gd" id="1_yyqqf"]
 [ext_resource type="Texture2D" uid="uid://d0eubdi4cjt0i" path="res://textures/image assets/Pickaxe Icon.png" id="2_2oldh"]
 [ext_resource type="Texture2D" uid="uid://bgphbi243whan" path="res://textures/image assets/Dirt Mining cell 16x16.png" id="2_5gflm"]
 [ext_resource type="Texture2D" uid="uid://c3vgljojl6cxu" path="res://textures/image assets/Sledgehammer Icon.png" id="3_bratm"]
@@ -43,27 +43,18 @@ size_flags_vertical = 0
 text = "Durability: 100"
 horizontal_alignment = 1
 
-[node name="MainGameArea" type="HBoxContainer" parent="MainContainer"]
+[node name="MainGameArea" type="CenterContainer" parent="MainContainer"]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -500.0
-offset_top = -262.0
-offset_right = 500.0
-offset_bottom = 262.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-size_flags_vertical = 3
-theme_override_constants/separation = 15
-alignment = 1
 
 [node name="GridContainer" type="Control" parent="MainContainer/MainGameArea"]
 layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
+size_flags_horizontal = 4
+size_flags_vertical = 4
 
 [node name="ToolContainer" type="VBoxContainer" parent="MainContainer"]
 layout_mode = 1
@@ -102,10 +93,17 @@ scale = Vector2(0.236639, 0.236211)
 texture = ExtResource("3_bratm")
 
 [node name="CloseButton" type="Button" parent="MainContainer"]
-layout_mode = 2
-offset_left = 502.0
-offset_top = 593.0
-offset_right = 649.0
-offset_bottom = 624.0
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -74.0
+offset_top = -41.0
+offset_right = 74.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 0
 size_flags_horizontal = 4
 text = "  Close Minigame  "

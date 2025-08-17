@@ -26,9 +26,9 @@ extends Resource
 
 # Helper function to check if this item can appear in a specific mine
 func can_appear_in_mine(mine_id: int) -> bool:
-    # If mine_locations is empty or contains "all", item can appear in any mine
-    if mine_locations.is_empty() or mine_locations.has(0):
-        return true
-    
-    # Otherwise, check if the specific mine ID is in the list
-    return mine_locations.has(mine_id)
+	# If mine_locations is empty or contains "all", item can appear in any mine
+	if mine_locations.is_empty() or mine_locations.has(0):
+		return true
+	
+	# Otherwise, check if the specific mine ID is in the list
+	return mine_locations.has(mine_id)

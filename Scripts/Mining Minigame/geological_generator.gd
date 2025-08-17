@@ -405,7 +405,7 @@ static func generate_corner_slabs(_grid: Array, grid_size: Vector2i, config: For
 			for x in range(row_start, row_end + 1):
 				if painted >= budget:
 					break
-				var edge_bias := 0.7 * config.intensity
+				var _edge_bias := 0.7 * config.intensity
 				# Slightly higher density near the outermost edge fading inward
 				var inward_dist = (x - start_x if is_left else end_x - x) + (y - start_y if is_top else end_y - y)
 				var place_probability = clamp(0.75 * config.intensity - 0.04 * inward_dist, 0.35, 0.8)
