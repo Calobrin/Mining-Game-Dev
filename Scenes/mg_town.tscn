@@ -2,7 +2,7 @@
 
 [ext_resource type="PackedScene" uid="uid://dbkh65ymg3hyp" path="res://blender models/MG Town.glb" id="1_ygyvx"]
 [ext_resource type="PackedScene" uid="uid://idpgh2bb3r0t" path="res://Scenes/player/playernew.tscn" id="2_7oduu"]
-[ext_resource type="Script" path="res://Scripts/World/TownSceneScript.gd" id="2_14fw5"]
+[ext_resource type="Script" uid="uid://ddrmex0pnvge4" path="res://Scripts/World/TownSceneScript.gd" id="2_14fw5"]
 [ext_resource type="PackedScene" uid="uid://b4x11wc33w26x" path="res://Scenes/interactable_button.tscn" id="3_um32k"]
 [ext_resource type="PackedScene" uid="uid://ntn7tba50ogf" path="res://Scenes/spawnpoint.tscn" id="4_pg0md"]
 

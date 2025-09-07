@@ -1,6 +1,19 @@
 extends CanvasLayer
 class_name MiningMinigame
 
+# Set a high layer value to ensure we're above other UI
+func _init():
+	layer = 100  # Very high layer value to ensure we're on top
+
+# Game state
+var revealed_count: int = 0
+var total_value: int = 0
+
+## Signal emitted when the minigame is closed, with the number of treasures found and their total value
+## This signal is connected in mining_node.gd
+# warning-ignore:unused_signal
+signal minigame_closed(treasures_found: int, total_value: int)  # Connected in mining_node.gd
+
 # ============================================================================
 # CONSTANTS - Centralized values for easy tweaking
 # ============================================================================
@@ -44,6 +57,8 @@ enum ToolType { PICKAXE, HAMMER }
 var current_tool = ToolType.PICKAXE
 
 # Game state
+@export var difficulty: int = 1
+@export var rewards_multiplier: float = 1.0
 var max_durability = 100
 var current_durability = 0  # Will be set to max_durability in start_game()
 var game_over = false
@@ -95,13 +110,28 @@ const STONE_TILE_SIZE: Vector2i = Vector2i(16, 16)
 
 # Called when the node enters the scene tree for the first time
 func _ready():
+	# Make sure we can process input
+	set_process_input(true)
+	set_process_unhandled_input(true)
+	
+	# Make sure we can receive input
+	get_viewport().gui_disable_input = false
+	
+	# Make sure we're the top layer
+	layer = 128  # High layer number to ensure we're on top
+	
+	# Connect the close button signal if it exists
+	var close_button = $MainContainer/CloseButton
+	if close_button:
+		close_button.pressed.connect(_on_close_button_pressed)
+	
 	randomize()  # Initialize random number generator
 	
 	# Connect to window resize signals to handle resolution changes
 	get_viewport().size_changed.connect(on_viewport_resized)
 	
 	# Ensure UI overlays (e.g., game over panel) render above the grid
-	var ui_container := $MainContainer/"UI Elements"
+	var ui_container = $MainContainer/"UI Elements"
 	if ui_container:
 		ui_container.z_index = 1000
 		ui_container.z_as_relative = false
@@ -369,7 +399,8 @@ func create_grid_visuals():
 		# Store the row
 		cell_nodes.append(row)
 	
-	# Add a target reticle for aiming
+	# Create reticle as a direct child of this node (which is a CanvasLayer)
+	# This ensures it's rendered above all other UI elements
 	var reticle = create_reticle()
 	# Place reticle on its own CanvasLayer to guarantee it draws above the grid
 	var reticle_layer := get_node_or_null("ReticleLayer")
@@ -387,14 +418,17 @@ func create_reticle():
 	reticle.name = "Reticle"
 	reticle.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	reticle.z_as_relative = false
-	reticle.z_index = 1005
+	reticle.z_index = 1000
+	reticle.visible = true
+	# Ensure it's not affected by the viewport
+	reticle.top_level = true
 	
 	# Create a cross shape using lines
 	var reticle_lines = Line2D.new()
 	reticle_lines.z_as_relative = false
 	reticle_lines.z_index = 1005
-	reticle_lines.width = 2
-	reticle_lines.default_color = Color(1, 0, 0, 0.8)  # Red
+	reticle_lines.width = 3  # Slightly thicker for better visibility
+	reticle_lines.default_color = Color(1, 0, 0, 1.0)  # Solid red
 	
 	# Cross shape points (horizontal line)
 	reticle_lines.add_point(Vector2(-10, 0))
@@ -404,8 +438,8 @@ func create_reticle():
 	var vertical_line = Line2D.new()
 	vertical_line.z_as_relative = false
 	vertical_line.z_index = 1005
-	vertical_line.width = 2
-	vertical_line.default_color = Color(1, 0, 0, 0.8)
+	vertical_line.width = 3  # Slightly thicker for better visibility
+	vertical_line.default_color = Color(1, 0, 0, 1.0)  # Solid red
 	vertical_line.add_point(Vector2(0, -10))
 	vertical_line.add_point(Vector2(0, 10))
 	
@@ -417,14 +451,15 @@ func create_reticle():
 # Process mouse movement to update reticle position
 func _process(_delta):
 	# Update reticle position if it exists
-	var reticle = get_node_or_null("ReticleLayer/Reticle")
-	if reticle:
-		# Reticle is on a CanvasLayer (screen space). Convert GridContainer-local mouse to SCREEN coordinates
-		# using the canvas-aware global transform so scaling/offsets are handled.
-		var grid_container = $MainContainer/MainGameArea/GridContainer
-		var local_mouse = grid_container.get_local_mouse_position()
-		var screen_pos: Vector2 = grid_container.get_global_transform_with_canvas() * local_mouse
-		reticle.position = screen_pos
+	var reticle = get_node_or_null("Reticle")
+	if reticle and not game_over and get_tree() and get_viewport():
+		# Get the mouse position in the viewport
+		var mouse_pos = get_viewport().get_mouse_position()
+		# Convert to global coordinates if needed
+		reticle.global_position = mouse_pos - Vector2(10, 10)
+		reticle.visible = true
+		# Make sure it stays on top
+		reticle.z_index = 1000
 
 # Update durability label
 func update_durability_label():
@@ -502,14 +537,23 @@ func reflow_grid_layout():
 	normalize_grid_layering()
 
 # Handle close button press
-func on_close_button_pressed():
-	# Route to the unified close flow
+func _on_close_button_pressed():
+	# Make sure we restore input state before closing
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	close_minigame()
 
 # Start a new game
 func start_game():
-	# Hide system cursor and show custom crosshair
-	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+	# Set difficulty-based values
+	max_durability = int(100 * (1.0 + (difficulty - 1) * 0.5))  # Scale durability with difficulty
+	
+	# Make sure we're visible and can receive input
+	show()
+	set_process_input(true)
+	set_process_unhandled_input(true)
+	
+	# Show the mouse cursor for the minigame
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	
 	# Reset game state
 	game_over = false
@@ -635,11 +679,12 @@ func can_cell_be_damaged(x: int, y: int) -> bool:
 	# Can only damage if current layer is dirt or stone AND not already revealed
 	return (current_layer["type"] == LayerType.DIRT or current_layer["type"] == LayerType.STONE) and not current_layer["revealed"]
 
-# Handle cell clicking
+# Handle cell click (this is called by the cell's input_event signal)
 func on_cell_clicked(x: int, y: int):
+	# Make sure we're not in the middle of another action
 	if game_over:
 		return
-		
+	
 	# Get current layer of the clicked cell
 	var cell_data = grid[y][x]
 	var current_layer_index = cell_data["current_layer"]
@@ -698,7 +743,7 @@ func on_cell_clicked(x: int, y: int):
 			# Cap at maximum cost
 			var max_cost = max_durability * (hammer_max_cost_percent / 100.0)
 			durability_cost = ceili(min(total_cost, max_cost))
-		
+
 		# Apply durability cost (unless dev mode is enabled)
 		if dev_mode_unlimited_durability:
 			print("DEV MODE: Durability cost ignored (", durability_cost, " would have been spent)")
@@ -1071,104 +1116,423 @@ func set_current_tool(tool_type):
 	else:
 		print("WARNING: Tool buttons not found in the scene!")
 
-# Handle input events (for dev mode toggle)
+# Handle input events (for dev mode toggle and ESC key)
 func _input(event):
-	if event is InputEventKey and event.pressed:
-		# Toggle dev mode with F1 key
-		if event.keycode == KEY_F1:
-			dev_mode_unlimited_durability = !dev_mode_unlimited_durability
-			update_durability_label()
-			if dev_mode_unlimited_durability:
-				print("DEV MODE ENABLED: Unlimited durability activated!")
-			else:
-				print("DEV MODE DISABLED: Normal durability restored.")
+	# Always process ESC key first
+	if event.is_action_pressed("ui_cancel"):
+		close_minigame()
+		var viewport = get_viewport()
+		if viewport:
+			viewport.set_input_as_handled()
+		return
+		
+	# Process other input only if not game over
+	if game_over:
+		return
+			
+	# Toggle dev mode with Ctrl+Shift+D
+	if event is InputEventKey and event.pressed and event.keycode == KEY_D and \
+	   event.ctrl_pressed and event.shift_pressed:
+		dev_mode_unlimited_durability = !dev_mode_unlimited_durability
+		if dev_mode_unlimited_durability:
+			print("DEV MODE ENABLED: Unlimited durability activated!")
+		else:
+			print("DEV MODE DISABLED: Normal durability restored.")
+		get_viewport().set_input_as_handled()
+
+# Handle mouse clicks on the grid
+func _unhandled_input(event: InputEvent) -> void:
+	# Only process mouse clicks if not game over
+	if game_over:
+		return
+		
+	# Handle left mouse button clicks for mining
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		# Get the grid position from mouse position
+		var grid_pos = get_grid_position_from_mouse(event.position)
+		if grid_pos.x >= 0 and grid_pos.y >= 0 and try_mine_cell(grid_pos.x, grid_pos.y):
+			get_viewport().set_input_as_handled()
+
+# Convert screen position to grid coordinates
+func get_grid_position_from_mouse(_mouse_pos: Vector2) -> Vector2i:
+	var grid_container = $MainContainer/MainGameArea/GridContainer
+	if not grid_container:
+		return Vector2i(-1, -1)
+		
+	# Convert mouse position to local grid container space
+	var local_pos = grid_container.get_local_mouse_position()
+	var cell_size = get_actual_cell_size()
+	
+	# Calculate grid position
+	var grid_x = int(local_pos.x / cell_size.x)
+	var grid_y = int(local_pos.y / cell_size.y)
+	
+	# Check if position is within grid bounds
+	if grid_x >= 0 and grid_x < GRID_SIZE.x and grid_y >= 0 and grid_y < GRID_SIZE.y:
+		return Vector2i(grid_x, grid_y)
+	return Vector2i(-1, -1)
+
+# Try to mine a cell at the given grid position
+func try_mine_cell(x: int, y: int) -> bool:
+	# Check if cell can be damaged
+	if not can_cell_be_damaged(x, y):
+		return false
+		
+	# Apply damage based on current tool
+	var damage = 0
+	var cell_data = grid[y][x]
+	var current_layer_index = cell_data["current_layer"]
+	var current_layer = cell_data["layers"][current_layer_index]
+	var damage_applied = false
+	
+	# Calculate damage based on tool
+	if current_tool == ToolType.PICKAXE:
+		damage = pickaxe_damage.get(current_layer["type"], 0)
+		if damage > 0:
+			damage_applied = true
+			# Deduct durability
+			if not dev_mode_unlimited_durability:
+				current_durability -= pickaxe_base_cost
+			
+			# Apply damage to the cell
+			current_layer["durability"] = max(0, current_layer["durability"] - damage)
+			
+			# Update cell visual
+			update_cell_visual(x, y)
+			
+			# Check if layer is destroyed
+			if current_layer["durability"] <= 0:
+				# Move to next layer if available
+				if current_layer_index < cell_data["layers"].size() - 1:
+					cell_data["current_layer"] += 1
+					# If next layer is treasure, reveal it
+					if cell_data["layers"][cell_data["current_layer"]]["type"] == LayerType.TREASURE:
+						reveal_treasure(x, y)
+					update_cell_visual(x, y)
+		
+	else: # HAMMER
+		# Hammer affects a 3x3 area
+		var cells_affected = 0
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var nx = x + dx
+				var ny = y + dy
+				if nx >= 0 and nx < GRID_SIZE.x and ny >= 0 and ny < GRID_SIZE.y:
+					if can_cell_be_damaged(nx, ny):
+						var target_cell = grid[ny][nx]
+						var target_layer = target_cell["layers"][target_cell["current_layer"]]
+						var hammer_dmg = hammer_damage.get(target_layer["type"], 0)
+						if hammer_dmg > 0:
+							damage_applied = true
+							target_layer["durability"] = max(0, target_layer["durability"] - hammer_dmg)
+							update_cell_visual(nx, ny)
+							cells_affected += 1
+		
+		# Calculate hammer durability cost (base + per-cell, capped at max)
+		if not dev_mode_unlimited_durability and damage_applied:
+			var hammer_cost = min(
+				hammer_base_cost_percent + (cells_affected - 1) * hammer_per_cell_cost_percent,
+				hammer_max_cost_percent
+			)
+			current_durability -= hammer_cost
+	
+	# Update UI and check for game over if damage was applied
+	if damage_applied:
+		update_durability_display()
+		if current_durability <= 0 and not dev_mode_unlimited_durability:
+			current_durability = 0
+			end_game()
+	
+	return damage_applied
+
+# Update the durability display in the UI
+func update_durability_display() -> void:
+	var durability_label = get_node_or_null("MainContainer/UI Elements/DurabilityLabel")
+	if durability_label:
+		durability_label.text = "Durability: %d" % current_durability
+
+# Clean up the results overlay if it exists
+func cleanup_results_overlay():
+	if not is_inside_tree():
+		return
+		
+	# Find the results canvas in our siblings
+	var parent = get_parent()
+	if parent:
+		var existing_overlay = parent.get_node_or_null("ResultsCanvasLayer")
+		if existing_overlay and is_instance_valid(existing_overlay):
+			existing_overlay.queue_free()
+			existing_overlay = null
+	# Also clean up any direct children that might be left
+	for child in get_children():
+		if child.name == "ResultsCanvasLayer" and is_instance_valid(child):
+			child.queue_free()
 
 # End the game and display results
 func end_game():
+	if game_over:
+		return  # Already ended
+		
 	game_over = true
 	
+	# Disable input processing
+	set_process_input(false)
+	set_process_unhandled_input(false)
+	
 	# Count only explicitly revealed treasures - no credit for partially accessible ones!
-	var revealed_count = 0
-	var total_value = 0
+	self.revealed_count = 0
+	self.total_value = 0
 	
-	for treasure in treasures:
+	for i in range(treasures.size()):
+		var treasure = treasures[i]
 		var placed_treasure = treasure["placed_treasure"]
-		if is_treasure_fully_claimed(placed_treasure):
-			revealed_count += 1
-			var treasure_data = placed_treasure.treasure_data if placed_treasure != null else null
-			if treasure_data != null:
-				total_value += TreasureGenerator.get_treasure_price_safe(treasure_data)
-			else:
-				print("WARNING: Could not find treasure data for fully-claimed treasure")
+		print("\nChecking treasure", i, ":", placed_treasure)
+		
+		if placed_treasure:
+			print("- Is fully claimed:", is_treasure_fully_claimed(placed_treasure))
+			print("- Has treasure_data:", placed_treasure.has_method("get") and placed_treasure.get("treasure_data") != null)
+			
+			if is_treasure_fully_claimed(placed_treasure):
+				self.revealed_count += 1
+				var treasure_data = null
+				if placed_treasure.has_method("get"):
+					treasure_data = placed_treasure.get("treasure_data")
+					if treasure_data:
+						var value = int(round(TreasureGenerator.get_treasure_price_safe(treasure_data)))
+						print("- Treasure value:", value)
+						self.total_value += value
+					else:
+						print("- WARNING: treasure_data is null")
+				else:
+					print("- WARNING: placed_treasure doesn't have 'get' method")
+		else:
+			print("- WARNING: placed_treasure is null")
+
 	
-	# Build a full-screen overlay with dim background and a centered results panel
-	var overlay := Control.new()
+	# Clean up any existing overlay first
+	cleanup_results_overlay()
+	
+	# Get viewport info first
+	var viewport = get_viewport()
+	var viewport_size = viewport.get_visible_rect().size if viewport else Vector2(1280, 720)
+	
+	# Create a new CanvasLayer for the results overlay
+	var results_canvas = CanvasLayer.new()
+	results_canvas.layer = 200  # Even higher than our main canvas
+	results_canvas.name = "ResultsCanvasLayer"
+	
+	# Create the overlay control
+	var overlay = Control.new()
 	overlay.name = "ResultsOverlay"
-	overlay.z_as_relative = false
-	overlay.z_index = 1100
-	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	
+	# Set up the overlay to cover the entire screen
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT, true)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	
+	# Add overlay to the canvas layer
+	results_canvas.add_child(overlay)
+	
+	# Add the canvas layer to the scene tree
+	add_sibling(results_canvas, true)  # Add as sibling to our canvas
+	
+	# Wait for the next frame to ensure proper sizing
+	await get_tree().process_frame
 
-	# Dim background
-	var dim := ColorRect.new()
-	dim.color = Color(0,0,0,0.6)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(dim)
+	# Create a semi-transparent background panel that fills the screen
+	var background = ColorRect.new()
+	background.anchor_right = 1.0
+	background.anchor_bottom = 1.0
+	background.color = Color(0, 0, 0, 0.7)  # Semi-transparent black
+	background.mouse_filter = Control.MOUSE_FILTER_STOP
+	overlay.add_child(background)
 
-	# Centered panel container
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(center)
+	# Create a container that will hold our centered content
+	var container = Control.new()
+	container.anchor_right = 1.0
+	container.anchor_bottom = 1.0
+	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	container.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	overlay.add_child(container)
+	
+	# Main panel with fixed size
+	var panel = PanelContainer.new()
+	panel.size = Vector2(500, 400)
+	panel.position = (viewport_size - panel.size) * 0.5  # Center the panel
+	
+	# Add style to the panel
+	var stylebox = StyleBoxFlat.new()
+	stylebox.bg_color = Color(0.1, 0.1, 0.15)
+	stylebox.border_width_bottom = 2
+	stylebox.border_width_left = 2
+	stylebox.border_width_right = 2
+	stylebox.border_width_top = 2
+	stylebox.border_color = Color(0.3, 0.3, 0.4)
+	stylebox.corner_radius_top_left = 10
+	stylebox.corner_radius_top_right = 10
+	stylebox.corner_radius_bottom_right = 10
+	stylebox.corner_radius_bottom_left = 10
+	panel.add_theme_stylebox_override("panel", stylebox)
+	
+	container.add_child(panel)
+	
+	# Create main container with margins
+	var margin_container = MarginContainer.new()
+	margin_container.anchor_right = 1.0
+	margin_container.anchor_bottom = 1.0
+	margin_container.add_theme_constant_override("margin_left", 20)
+	margin_container.add_theme_constant_override("margin_top", 20)
+	margin_container.add_theme_constant_override("margin_right", 20)
+	margin_container.add_theme_constant_override("margin_bottom", 20)
+	panel.add_child(margin_container)
+	
+	# Vertical box for content
+	var vbox = VBoxContainer.new()
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 20)
+	margin_container.add_child(vbox)
+	
+	# Add game over label
+	var game_over_label = Label.new()
+	game_over_label.text = "Mining Complete!"
+	game_over_label.add_theme_font_size_override("font_size", 42)
+	game_over_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	game_over_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	game_over_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	vbox.add_child(game_over_label)
+	
+	# Add divider
+	var divider = ColorRect.new()
+	divider.custom_minimum_size = Vector2(0, 2)
+	divider.color = Color(0.3, 0.3, 0.4)
+	divider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_child(divider)
+	
+	# Add results container with some spacing
+	var results_container = VBoxContainer.new()
+	results_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	results_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	results_container.add_theme_constant_override("separation", 15)
+	vbox.add_child(results_container)
+	
+	# Add results labels with better formatting
+	var treasures_found_label = Label.new()
+	treasures_found_label.text = "Treasures Found: %d" % self.revealed_count
+	treasures_found_label.add_theme_font_size_override("font_size", 28)
+	treasures_found_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	treasures_found_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1.0))
+	results_container.add_child(treasures_found_label)
+	
+	var total_value_label = Label.new()
+	total_value_label.text = "Total Value: %d" % self.total_value
+	total_value_label.add_theme_font_size_override("font_size", 32)
+	total_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	total_value_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.3))
+	results_container.add_child(total_value_label)
+	
+	# Add exit button container
+	var button_container = HBoxContainer.new()
+	button_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button_container.add_spacer(true)
+	
+	# Add exit button with better styling
+	var exit_button = Button.new()
+	exit_button.name = "ExitButton"
+	exit_button.custom_minimum_size = Vector2(200, 50)
+	exit_button.text = "Return to Game"
+	wexit_button.add_theme_font_size_override("font_size", 24)
+	
+	# Style the button
+	var normal_style = StyleBoxFlat.new()
+	normal_style.bg_color = Color(0.2, 0.6, 0.9)
+	normal_style.corner_radius_top_left = 5
+	normal_style.corner_radius_top_right = 5
+	normal_style.corner_radius_bottom_right = 5
+	normal_style.corner_radius_bottom_left = 5
+	
+	var hover_style = normal_style.duplicate()
+	hover_style.bg_color = Color(0.3, 0.7, 1.0)
+	
+	var pressed_style = normal_style.duplicate()
+	pressed_style.bg_color = Color(0.1, 0.5, 0.8)
+	
+	exit_button.add_theme_stylebox_override("normal", normal_style)
+	exit_button.add_theme_stylebox_override("hover", hover_style)
+	exit_button.add_theme_stylebox_override("pressed", pressed_style)
+	exit_button.add_theme_color_override("font_color", Color(1, 1, 1))
+	exit_button.add_theme_color_override("font_hover_color", Color(1, 1, 1))
+	exit_button.add_theme_color_override("font_pressed_color", Color(0.9, 0.9, 0.9))
+	
+	exit_button.pressed.connect(_on_exit_button_pressed)
+	button_container.add_child(exit_button)
+	button_container.add_spacer(true)
+	vbox.add_child(button_container)
+	
+	# Set focus and input handling
+	exit_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	exit_button.z_index = 1001
+	exit_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	if is_inside_tree():
+		exit_button.call_deferred("grab_focus")
+	exit_button.process_mode = Node.PROCESS_MODE_ALWAYS
 
-	var panel := Panel.new()
-	panel.name = "ResultsPanel"
-	panel.custom_minimum_size = Vector2(420, 240)
-	center.add_child(panel)
+	# Move overlay to front and ensure proper sizing
+	if is_instance_valid(overlay):
+		overlay.set_anchors_preset(Control.PRESET_FULL_RECT, true)
+		overlay.size = viewport_size
+		# Set a high z-index to ensure it's on top
+		overlay.z_index = 1000
 
-	var vbox := VBoxContainer.new()
-	vbox.anchor_left = 0
-	vbox.anchor_top = 0
-	vbox.anchor_right = 1
-	vbox.anchor_bottom = 1
-	vbox.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	vbox.grow_vertical = Control.GROW_DIRECTION_BOTH
-	vbox.add_theme_constant_override("separation", 16)
-	panel.add_child(vbox)
-
-	var results := Label.new()
-	results.text = "Mining Complete!\n\nTreasures Found: " + str(revealed_count) + "\nTotal Value: " + str(total_value)
-	results.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	results.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	vbox.add_child(results)
-
-	# Add a retry button
-	var retry_button := Button.new()
-	retry_button.text = "Try Again"
-	retry_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	retry_button.pressed.connect(func(): get_tree().reload_current_scene())
-	vbox.add_child(retry_button)
-
-	# Put overlay on its own CanvasLayer so nothing from the grid can overdraw it
-	var results_layer := CanvasLayer.new()
-	results_layer.layer = 10
-	results_layer.name = "ResultsCanvasLayer"
-	results_layer.add_child(overlay)
-	add_child(results_layer)
-
-	# Keep using the custom crosshair cursor over the results overlay
-	# Ensure the OS cursor stays hidden and the reticle is visible above everything
-	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
-	var reticle_to_show := get_node_or_null("ReticleLayer/Reticle")
-	if reticle_to_show:
-		reticle_to_show.visible = true
-
-# Close the minigame and restore cursor
-func close_minigame():
+	# Show the system cursor for the exit button
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	# You can add additional cleanup here if needed
-	# For now, just hide the minigame or go back to main scene
-	# Notify globally that the minigame closed
-	Signals.emit_minigame_closed()
-	queue_free()  # Remove the minigame scene
+	# Hide any reticle that might be showing
+	var reticle_to_hide = get_node_or_null("ReticleLayer/Reticle")
+	if reticle_to_hide:
+		reticle_to_hide.visible = false
+
+# Close the minigame and clean up
+func _on_exit_button_pressed():
+	print("Exit button pressed!")
+	# Get the button reference
+	var exit_button = get_node_or_null("ResultsCanvasLayer/ResultsOverlay/UIContainer/VBoxContainer/HBoxContainer/ExitButton")
+	if exit_button:
+		# Disable the button to prevent multiple clicks
+		exit_button.disabled = true
+		# Visual feedback
+		exit_button.modulate = Color(0.8, 0.8, 0.8, 1.0)
+	
+	# Close immediately without waiting
+	close_minigame()
+
+func close_minigame():
+	print("Closing minigame...")  # Debug print
+	print("Treasures found:", revealed_count, " Value:", total_value)  # Debug print
+	
+	# Clean up any existing overlay first
+	cleanup_results_overlay()
+	
+	# Make sure cursor is visible
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	
+	# Emit signal with results
+	if is_inside_tree() and has_signal("minigame_closed"):
+		var _connections = get_signal_connection_list("minigame_closed")
+		if _connections.size() == 0:
+			print("Warning: minigame_closed signal has no connections")
+		else:
+			emit_signal("minigame_closed", revealed_count, total_value)
+	
+	# Use call_deferred to safely remove from tree
+	call_deferred("_safe_remove_minigame")
+
+func _safe_remove_minigame():
+	# Safely remove the minigame from the tree
+	if is_inside_tree():
+		var parent = get_parent()
+		if parent:
+			parent.remove_child(self)
+	queue_free()
 
 # Ensure cursor is restored when leaving the minigame
 func _exit_tree():

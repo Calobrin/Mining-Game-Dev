@@ -1,7 +1,6 @@
 extends Area3D
 
 # You can customize properties for different mining nodes
-@export var ore_type: String = "Iron" # Type of ore this node contains
 @export var difficulty: int = 1 # Difficulty level affecting mining game
 @export var rewards_multiplier: float = 1.0 # Multiplier for rewards
 
@@ -38,22 +37,62 @@ func _input(event):
 	if player_nearby and is_active and event.is_action_pressed("Interact") and not mining_active:
 		start_mining_game()
 
+# Store reference to current minigame instance
+var current_minigame = null
+
 # This function will start the mining minigame
 func start_mining_game():
+	if mining_active:
+		return
+			
 	mining_active = true
+	interact_label.visible = false  # Hide the prompt while mining
 	
-	# You can uncomment and modify this code once you have a mining minigame scene
-	# var mining_scene = load("res://Scenes/mining_minigame.tscn").instantiate()
-	# mining_scene.setup(ore_type, difficulty, rewards_multiplier)
-	# get_tree().get_root().add_child(mining_scene)
+	# Pause the game tree (pauses all nodes except those with 'process_mode = PROCESS_MODE_ALWAYS')
+	get_tree().paused = true
 	
-	# For now, just print debug info
-	print("Starting mining game with: " + ore_type + ", difficulty: " + str(difficulty))
+	# Load and instance the mining minigame scene
+	current_minigame = preload("res://Scenes/MiningMinigame.tscn").instantiate()
+	current_minigame.process_mode = Node.PROCESS_MODE_ALWAYS  # Make sure it runs while tree is paused
 	
-	# This would be called when the mining game ends
-	# In reality, you would connect to a signal from your mining game scene
-	await get_tree().create_timer(0.5).timeout
+	# Set difficulty and rewards before adding to scene
+	current_minigame.difficulty = difficulty
+	current_minigame.rewards_multiplier = rewards_multiplier
+	
+	# Add it to the scene tree
+	get_tree().root.add_child(current_minigame)
+	
+	# Connect to the minigame's closed signal
+	if current_minigame.has_signal("minigame_closed"):
+		# Disconnect first to prevent duplicate connections
+		if current_minigame.minigame_closed.is_connected(_on_minigame_closed):
+			current_minigame.minigame_closed.disconnect(_on_minigame_closed)
+		current_minigame.minigame_closed.connect(_on_minigame_closed)
+	
+	# Start the minigame
+	current_minigame.start_game()
+	
+	# Capture the mouse for the minigame
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+func _on_minigame_closed(revealed_count: int = 0, total_value: int = 0):
+	# Clean up the minigame instance
+	if current_minigame and is_instance_valid(current_minigame):
+		current_minigame.queue_free()
+		current_minigame = null
+	
+	# Unpause the game
+	get_tree().paused = false
+	
+	# Restore mouse mode for 3D game
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	
+	# Allow mining again
 	mining_active = false
+	interact_label.visible = player_nearby  # Show label again if player is still nearby
+	
+	# Here you can use revealed_count and total_value as needed
+	print("Mining complete! Found ", revealed_count, " treasures worth ", total_value, " total")
 	
 # Called by the mining node manager to activate this node
 func activate():
@@ -61,7 +100,7 @@ func activate():
 	sprite_3d.visible = true
 	# Only show label if player is already nearby
 	interact_label.visible = player_nearby
-	print("Mining node activated: " + ore_type)
+	print("Mining node activated")
 
 # Called by the mining node manager to deactivate this node
 func deactivate():
@@ -71,28 +110,10 @@ func deactivate():
 	interact_label.visible = false
 	print("Mining node deactivated")
 	
-# Set ore type based on rarity group
-func set_ore_group(group: String):
-	match group:
-		"common":
-			ore_type = choose(["Iron", "Copper", "Tin"])
-			difficulty = 1
-			rewards_multiplier = 1.0
-		"uncommon":
-			ore_type = choose(["Silver", "Gold", "Mithril"])
-			difficulty = 2
-			rewards_multiplier = 2.0
-		"rare":
-			ore_type = choose(["Adamantite", "Dragonite", "Starstone"])
-			difficulty = 3
-			rewards_multiplier = 3.5
-		_:
-			ore_type = "Iron"
-			difficulty = 1
-			rewards_multiplier = 1.0
+
 			
 	# Update label text based on ore type
-	interact_label.text = "[E]: Mine " + ore_type
+	interact_label.text = "[E]: Mine "
 
 # Helper function to choose a random element from an array
 func choose(array):

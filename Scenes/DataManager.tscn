@@ -1,6 +1,7 @@
 [gd_scene load_steps=2 format=3 uid="uid://n7ki0t7es2tf"]
 
-[ext_resource type="Script" path="res://Scripts/mining_data_importer.gd" id="1_hcrqm"]
+[sub_resource type="Resource" id="Resource_o6j6e"]
+metadata/__load_path__ = "res://Scripts/mining_data_importer.gd"
 
 [node name="DataManager" type="Node"]
-script = ExtResource("1_hcrqm")
+script = SubResource("Resource_o6j6e")
