@@ -2,108 +2,87 @@ extends CanvasLayer
 class_name MiningMinigame
 
 # Set a high layer value to ensure we're above other UI
-func _init():
-	layer = 100  # Very high layer value to ensure we're on top
 
-# Game state
-var revealed_count: int = 0
-var total_value: int = 0
+# =========================================================================
+# Signals
+# =========================================================================
+signal minigame_closed(treasures_found: int, total_value: int)
 
-## Signal emitted when the minigame is closed, with the number of treasures found and their total value
-## This signal is connected in mining_node.gd
-# warning-ignore:unused_signal
-signal minigame_closed(treasures_found: int, total_value: int)  # Connected in mining_node.gd
-
-# ============================================================================
-# CONSTANTS - Centralized values for easy tweaking
-# ============================================================================
-
+# =========================================================================
+# Constants and configuration
+# =========================================================================
 # Visual constants
-const TREASURE_SIZE_MULTIPLIER = 0.8  # Treasure visual size relative to cell
-const CELL_OPACITY_MIN = 0.3  # Minimum opacity for damaged cells
-const BORDER_OPACITY = 0.5  # Border transparency
+const TREASURE_SIZE_MULTIPLIER = 0.8
+const CELL_OPACITY_MIN = 0.3
+const BORDER_OPACITY = 0.5
 
-# Color constants
+# Colors
 const COLOR_DIRT = Color(0.6, 0.4, 0.2)
-const COLOR_STONE = Color(0.48, 0.48, 0.48)  # Realistic neutral stone gray
+const COLOR_STONE = Color(0.48, 0.48, 0.48)
 const COLOR_EMPTY = Color(0.2, 0.2, 0.2)
 const COLOR_TREASURE_BG = Color(0.8, 0.7, 0.2)
-const COLOR_TREASURE_ROCK = Color(0.28, 0.28, 0.28)   # Darker than stone
-const COLOR_TREASURE_METAL = Color(0.95, 0.55, 0.20)  # Copper-like orange
-const COLOR_TREASURE_GEM = Color(0.60, 0.85, 1.00)    # Light blue
+const COLOR_TREASURE_ROCK = Color(0.28, 0.28, 0.28)
+const COLOR_TREASURE_METAL = Color(0.95, 0.55, 0.20)
+const COLOR_TREASURE_GEM = Color(0.60, 0.85, 1.00)
 const COLOR_BORDER = Color(0.3, 0.3, 0.3)
 
-# Grid properties
-const GRID_SIZE = Vector2i(17, 10)  # 17x10 grid				# No space between cells - continuous terrain
+const ToolLogic = preload("res://Scripts/Mining Minigame/ToolLogic.gd")
 
-# Use fixed or dynamic cell size
-@export var use_fixed_cell_size: bool = true		# Set to false for dynamic sizing based on container
-@export var fixed_cell_size: Vector2 = Vector2(50, 50)	# Size of each cell in pixels when using fixed sizing
+# Grid size
+const GRID_SIZE = Vector2i(17, 10)
 
-# Overlay dimensions (automatically calculated based on screen size)
-@export_range(0.5, 0.9, 0.05) var overlay_width_percentage: float = 0.85  # Percentage of screen width
-@export_range(0.5, 0.9, 0.05) var overlay_height_percentage: float = 0.8  # Percentage of screen height
-@export var min_cell_size: Vector2 = Vector2(30, 30)  # Minimum cell size to ensure visibility
-@export var grid_backdrop_color: Color = Color(0.2, 0.2, 0.2)  # Color behind the grid (for empty/crystal margins)
+# Sizing and layout
+@export var use_fixed_cell_size: bool = true
+@export var fixed_cell_size: Vector2 = Vector2(50, 50)
+@export_range(0.5, 0.9, 0.05) var overlay_width_percentage: float = 0.85
+@export_range(0.5, 0.9, 0.05) var overlay_height_percentage: float = 0.8
+@export var min_cell_size: Vector2 = Vector2(30, 30)
+@export var grid_backdrop_color: Color = Color(0.2, 0.2, 0.2)
 
-# Visual toggles
-@export var show_cell_borders: bool = false  # Toggle grid cell borders on/off
+# Visual toggle
+@export var show_cell_borders: bool = false
 
-# Layer types
+# Enums
+enum ToolType { PICKAXE, HAMMER }
 enum LayerType { STONE, DIRT, TREASURE, EMPTY }
 
-# Tool types
-enum ToolType { PICKAXE, HAMMER }
+# Game state and settings
+var game_over: bool = false
 var current_tool = ToolType.PICKAXE
-
-# Game state
 @export var difficulty: int = 1
 @export var rewards_multiplier: float = 1.0
-var max_durability = 100
-var current_durability = 0  # Will be set to max_durability in start_game()
-var game_over = false
-var grid = []  # Stores the terrain data
-var treasures = []  # Stores the treasure locations and types
+@export var dev_mode_unlimited_durability: bool = false
 
-# Dev mode for testing
-@export var dev_mode_unlimited_durability: bool = false  # Toggle in inspector for unlimited durability
+# Grid data
+var grid = []
+var cell_nodes = []
+var treasures = []
 
-# Treasure generation settings
-@export_range(2, 5, 1) var min_treasures: int = 3  # Minimum treasures per game
-@export_range(6, 15, 1) var max_treasures: int = 10  # Maximum treasures per game
+# Treasure config
+@export_range(2, 5, 1) var min_treasures: int = 3
+@export_range(6, 15, 1) var max_treasures: int = 10
 
-# Durability cost percentages (easily adjustable for game balance)
-@export_range(0.5, 3.0, 0.1) var pickaxe_base_cost: float = 1.0  # 1% per cell
-@export_range(1.0, 5.0, 0.1) var hammer_base_cost_percent: float = 2.0  # 2% base cost for hammer
-@export_range(0.1, 1.0, 0.1) var hammer_per_cell_cost_percent: float = 0.5  # 0.5% per additional cell
-@export_range(3.0, 8.0, 0.1) var hammer_max_cost_percent: float = 5.0  # 5% maximum cost
+# Durability and costs
+var max_durability: float = 100
+var current_durability: float = 0
+var revealed_count: int = 0
+var total_value: int = 0
+@export_range(0.5, 3.0, 0.1) var pickaxe_base_cost: float = 1.0
+@export_range(1.0, 5.0, 0.1) var hammer_base_cost_percent: float = 2.0
+@export_range(0.1, 1.0, 0.1) var hammer_per_cell_cost_percent: float = 0.5
+@export_range(3.0, 8.0, 0.1) var hammer_max_cost_percent: float = 5.0
 
-# Mining properties - dirt and stone have the same health now (1 hit at 100 damage)
-var pickaxe_damage = {
-	LayerType.STONE: 100,
-	LayerType.DIRT: 100
-}
+# Damage values
+var pickaxe_damage = { LayerType.STONE: 100, LayerType.DIRT: 100 }
+var hammer_damage = { LayerType.STONE: 100, LayerType.DIRT: 100 }
 
-var hammer_damage = {
-	LayerType.STONE: 100,
-	LayerType.DIRT: 100
-}
-
-# Visual elements
-var cell_nodes = []  # Stores references to the cell UI nodes
-
-# Dirt texture (assign in Inspector to use a tiled texture for dirt cells)
+# Optional textures and spritesheet settings
 @export var dirt_texture: Texture2D
-
-# Dirt spritesheet settings (4 frames: 0=plain, 1=damaged, 2=rubble, 3=rubble+damaged)
 const DIRT_SHEET_HFRAMES: int = 4
 const DIRT_SHEET_VFRAMES: int = 1
 const DIRT_TILE_SIZE: Vector2i = Vector2i(16, 16)
 
-# Stone texture (assign in Inspector to use a tiled texture for stone cells)
 @export var stone_texture: Texture2D
-
-# Stone spritesheet settings (2 frames: 0=solid, 1=cracked)
 const STONE_SHEET_HFRAMES: int = 2
 const STONE_SHEET_VFRAMES: int = 1
 const STONE_TILE_SIZE: Vector2i = Vector2i(16, 16)
@@ -390,7 +369,7 @@ func create_grid_visuals():
 				if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 					var clicked_x = cell.get_meta("grid_x")
 					var clicked_y = cell.get_meta("grid_y")
-					on_cell_clicked(clicked_x, clicked_y))
+					try_mine_cell(clicked_x, clicked_y))
 			
 			# Add to scene
 			$MainContainer/MainGameArea/GridContainer.add_child(cell)
@@ -460,14 +439,6 @@ func _process(_delta):
 		reticle.visible = true
 		# Make sure it stays on top
 		reticle.z_index = 1000
-
-# Update durability label
-func update_durability_label():
-	var label = $"MainContainer/UI Elements/DurabilityLabel"
-	if label != null:
-		# Ensure displayed durability is never negative
-		var display_durability = max(0, current_durability)
-		label.text = "Durability: " + str(display_durability)
 
 # Handle viewport resizing
 func on_viewport_resized():
@@ -544,9 +515,6 @@ func _on_close_button_pressed():
 
 # Start a new game
 func start_game():
-	# Set difficulty-based values
-	max_durability = int(100 * (1.0 + (difficulty - 1) * 0.5))  # Scale durability with difficulty
-	
 	# Make sure we're visible and can receive input
 	show()
 	set_process_input(true)
@@ -557,7 +525,6 @@ func start_game():
 	
 	# Reset game state
 	game_over = false
-	current_durability = max_durability
 	
 	# Clear any existing grid
 	for child in $MainContainer/MainGameArea/GridContainer.get_children():
@@ -599,11 +566,11 @@ func start_game():
 	var treasure_count = randi_range(min_treasures, max_treasures)
 	place_treasures(treasure_count)
 	
-	# Update durability display
-	update_durability_label()
-	
 	# Initialize tool selection (highlight default pickaxe)
 	set_current_tool(current_tool)
+	
+	# Initialize durability
+	current_durability = max_durability
 	
 	# Show tutorial text if desired
 	print("Mining game started! Break through stone and dirt to find treasures!")
@@ -684,112 +651,9 @@ func on_cell_clicked(x: int, y: int):
 	# Make sure we're not in the middle of another action
 	if game_over:
 		return
-	
-	# Get current layer of the clicked cell
-	var cell_data = grid[y][x]
-	var current_layer_index = cell_data["current_layer"]
-	var _current_layer = cell_data["layers"][current_layer_index]
-	
-	# NOTE: Do NOT early-return on fully revealed bottom cells.
-	# We allow clicking empty cells so adjacent damageable tiles can still be hit.
-		
-	# Get the current tool damage values
-	var damage_values
-	if current_tool == ToolType.PICKAXE:
-		damage_values = pickaxe_damage
-	else:  # HAMMER
-		damage_values = hammer_damage
-	
-	# Calculate durability cost based on actual cells that will be affected
-	# We compute a weighted sum using the same multipliers as damage application.
-	var weighted_sum: float = 0.0
-	# Pattern per tool
-	if current_tool == ToolType.PICKAXE:
-		# Plus pattern: center 1.0, sides 0.5 (only add if damageable)
-		if can_cell_be_damaged(x, y):
-			weighted_sum += 1.0
-		if can_cell_be_damaged(x - 1, y):
-			weighted_sum += 0.5
-		if can_cell_be_damaged(x + 1, y):
-			weighted_sum += 0.5
-		if can_cell_be_damaged(x, y - 1):
-			weighted_sum += 0.5
-		if can_cell_be_damaged(x, y + 1):
-			weighted_sum += 0.5
-	else:
-		# HAMMER: 3x3 pattern, center and plus at 1.0, corners at 0.5
-		for dy in range(-1, 2):
-			for dx in range(-1, 2):
-				var px = x + dx
-				var py = y + dy
-				var mult = 1.0 if (dx == 0 or dy == 0) else 0.5  # corners have both dx and dy non-zero
-				if can_cell_be_damaged(px, py):
-					weighted_sum += mult
-	
-	# Calculate dynamic durability cost
-	var durability_cost = 0
-	if weighted_sum > 0.0:
-		if current_tool == ToolType.PICKAXE:
-			# Pickaxe: cost scales by weighted cells
-			# Use ceiling and enforce minimum 1 when any work is done to avoid 0-cost on small weights (e.g., 0.5)
-			durability_cost = max(1, ceili(max_durability * (pickaxe_base_cost / 100.0) * weighted_sum))
-		else:  # HAMMER
-			# Hammer: base cost + weighted additional work (excluding center cost baked into base)
-			# Estimate additional weight as (weighted_sum - 1.0), but not less than 0
-			var additional_weight = maxf(0.0, weighted_sum - 1.0)
-			var base_cost = max_durability * (hammer_base_cost_percent / 100.0)
-			var additional_cost = max_durability * (hammer_per_cell_cost_percent / 100.0) * additional_weight
-			var total_cost = base_cost + additional_cost
-			# Cap at maximum cost
-			var max_cost = max_durability * (hammer_max_cost_percent / 100.0)
-			durability_cost = ceili(min(total_cost, max_cost))
 
-		# Apply durability cost (unless dev mode is enabled)
-		if dev_mode_unlimited_durability:
-			print("DEV MODE: Durability cost ignored (", durability_cost, " would have been spent)")
-		else:
-			current_durability -= durability_cost
-			# Ensure durability never goes below 0
-			current_durability = max(0, current_durability)
-			print("Durability cost: ", durability_cost, " (weighted work: ", str(roundf(weighted_sum * 100.0) / 100.0), ")")
-		
-		update_durability_label()
-	
-	# If nothing around is damageable, stop here to avoid wasted work
-	if weighted_sum <= 0.0:
-		return
-
-	# Apply damage to cells based on tool pattern
-	# Apply damage to the center cell first
-	hit_cell(x, y, damage_values)
-	
-	# Apply damage based on tool pattern
-	if current_tool == ToolType.PICKAXE:
-		# Plus pattern: center 1.0, sides 0.5
-		if x > 0:
-			hit_cell(x - 1, y, damage_values, 0.5)
-		if x < GRID_SIZE.x - 1:
-			hit_cell(x + 1, y, damage_values, 0.5)
-		if y > 0:
-			hit_cell(x, y - 1, damage_values, 0.5)
-		if y < GRID_SIZE.y - 1:
-			hit_cell(x, y + 1, damage_values, 0.5)
-	else:  # HAMMER
-		# 3x3 pattern: center and plus at 1.0, corners at 0.5
-		for dy in range(-1, 2):
-			for dx in range(-1, 2):
-				var px = x + dx
-				var py = y + dy
-				# Bounds check to avoid invalid indices at edges
-				if px < 0 or px >= GRID_SIZE.x or py < 0 or py >= GRID_SIZE.y:
-					continue
-				var mult = 1.0 if (dx == 0 or dy == 0) else 0.5
-				if not (dx == 0 and dy == 0):
-					hit_cell(px, py, damage_values, mult)
-	
-	# Check for game over
-	if current_durability <= 0:
-		end_game()
+	# Use the consolidated mining logic
+	try_mine_cell(x, y)
 
 # Determine if a placed treasure is fully claimed (all its cells revealed at treasure layer)
 func is_treasure_fully_claimed(placed_treasure) -> bool:
@@ -809,50 +673,9 @@ func is_treasure_fully_claimed(placed_treasure) -> bool:
 	return true
 
 # Hit a cell with a tool, applying damage
-func hit_cell(x: int, y: int, damage_values, multiplier: float = 1.0):
-	var cell_data = grid[y][x]
-	var current_layer_index = cell_data["current_layer"]
-	var current_layer = cell_data["layers"][current_layer_index]
-	
-	print("DEBUG: Hitting cell (" + str(x) + ", " + str(y) + ") - Layer " + str(current_layer_index) + " (" + str(LayerType.keys()[current_layer["type"]]) + ")")
-	
-	# Skip if this is the bottom layer and already revealed
-	if current_layer_index == 2 and current_layer["revealed"]:
-		return
-	
-	# Calculate damage based on layer type
-	var damage = 0
-	if current_layer["type"] == LayerType.STONE or current_layer["type"] == LayerType.DIRT:
-		damage = damage_values[current_layer["type"]] * multiplier
-	
-	# Apply damage to current layer durability
-	current_layer["durability"] -= damage
-	
-	# Update the cell visual
-	update_cell_visual(x, y)
-	
-	# Check if current layer is broken through
-	if current_layer["durability"] <= 0:
-		current_layer["revealed"] = true
-		
-		# If we just broke stone, mark rubble state for the dirt below
-		if current_layer["type"] == LayerType.STONE:
-			cell_data["stone_broken"] = true
-		
-		# Move to next layer if there is one
-		if current_layer_index < 2:
-			cell_data["current_layer"] += 1
-			update_cell_visual(x, y)  # Update visual to show new layer
-		
-		# Simple treasure reveal logic: if we just advanced to a layer that contains treasure, reveal it
-		var current_layer_after_advance = cell_data["current_layer"]
-		if current_layer_after_advance < 3 and cell_data["layers"][current_layer_after_advance]["type"] == LayerType.TREASURE:
-			print("DEBUG: Found treasure at (" + str(x) + ", " + str(y) + ") at layer " + str(current_layer_after_advance) + " - revealing!")
-			reveal_treasure(x, y)
-	
-	# Check if all cells are fully excavated (reached bottom layer)
-	if not game_over:
-		check_complete_excavation()
+func hit_cell(x: int, y: int, _damage_values, _multiplier: float = 1.0):
+	# Legacy wrapper; our main logic is in try_mine_cell
+	try_mine_cell(x, y)
 
 # Check if all cells have been fully excavated (reached the bottom layer)
 func check_complete_excavation():
@@ -1130,14 +953,11 @@ func _input(event):
 	if game_over:
 		return
 			
-	# Toggle dev mode with Ctrl+Shift+D
+	# Toggle dev mode with Ctrl+Shift+D (local flag)
 	if event is InputEventKey and event.pressed and event.keycode == KEY_D and \
 	   event.ctrl_pressed and event.shift_pressed:
 		dev_mode_unlimited_durability = !dev_mode_unlimited_durability
-		if dev_mode_unlimited_durability:
-			print("DEV MODE ENABLED: Unlimited durability activated!")
-		else:
-			print("DEV MODE DISABLED: Normal durability restored.")
+		print("DEV MODE:", "ON" if dev_mode_unlimited_durability else "OFF")
 		get_viewport().set_input_as_handled()
 
 # Handle mouse clicks on the grid
@@ -1174,66 +994,91 @@ func get_grid_position_from_mouse(_mouse_pos: Vector2) -> Vector2i:
 
 # Try to mine a cell at the given grid position
 func try_mine_cell(x: int, y: int) -> bool:
-	# Check if cell can be damaged
-	if not can_cell_be_damaged(x, y):
-		return false
-		
-	# Apply damage based on current tool
-	var damage = 0
-	var cell_data = grid[y][x]
-	var current_layer_index = cell_data["current_layer"]
-	var current_layer = cell_data["layers"][current_layer_index]
 	var damage_applied = false
 	
 	# Calculate damage based on tool
 	if current_tool == ToolType.PICKAXE:
-		damage = pickaxe_damage.get(current_layer["type"], 0)
-		if damage > 0:
-			damage_applied = true
-			# Deduct durability
-			if not dev_mode_unlimited_durability:
-				current_durability -= pickaxe_base_cost
+		# Pickaxe affects a + shape (center 100%, sides 50%)
+		var pickaxe_positions = ToolLogic.get_pickaxe_positions(x, y)
+		var pickaxe_cells_affected = 0
+		
+		for pos_data in pickaxe_positions:
+			var nx = pos_data.pos.x
+			var ny = pos_data.pos.y
+			var multiplier = pos_data.multiplier
 			
-			# Apply damage to the cell
-			current_layer["durability"] = max(0, current_layer["durability"] - damage)
-			
-			# Update cell visual
-			update_cell_visual(x, y)
-			
-			# Check if layer is destroyed
-			if current_layer["durability"] <= 0:
-				# Move to next layer if available
-				if current_layer_index < cell_data["layers"].size() - 1:
-					cell_data["current_layer"] += 1
-					# If next layer is treasure, reveal it
-					if cell_data["layers"][cell_data["current_layer"]]["type"] == LayerType.TREASURE:
-						reveal_treasure(x, y)
-					update_cell_visual(x, y)
+			if nx >= 0 and nx < GRID_SIZE.x and ny >= 0 and ny < GRID_SIZE.y:
+				if can_cell_be_damaged(nx, ny):
+					var target_cell = grid[ny][nx]
+					var target_layer = target_cell["layers"][target_cell["current_layer"]]
+					var base_damage = pickaxe_damage.get(target_layer["type"], 0)
+					var actual_damage = int(base_damage * multiplier)
+					
+					if actual_damage > 0:
+						damage_applied = true
+						target_layer["durability"] = max(0, target_layer["durability"] - actual_damage)
+						update_cell_visual(nx, ny)
+						pickaxe_cells_affected += 1
+						
+						# Check if layer is destroyed
+						if target_layer["durability"] <= 0:
+							# Mark stone as broken if we just destroyed a stone layer
+							if target_layer["type"] == LayerType.STONE:
+								target_cell["stone_broken"] = true
+							
+							# Move to next layer if available
+							if target_cell["current_layer"] < target_cell["layers"].size() - 1:
+								target_cell["current_layer"] += 1
+								# If next layer is treasure, reveal it
+								if target_cell["layers"][target_cell["current_layer"]]["type"] == LayerType.TREASURE:
+									reveal_treasure(nx, ny)
+								update_cell_visual(nx, ny)
+		
+		# Calculate pickaxe durability cost (base + per-cell affected)
+		if not dev_mode_unlimited_durability and damage_applied:
+			var pickaxe_cost = ToolLogic.compute_pickaxe_cost(pickaxe_base_cost, pickaxe_cells_affected, 0.5)
+			current_durability -= pickaxe_cost
 		
 	else: # HAMMER
-		# Hammer affects a 3x3 area
-		var cells_affected = 0
-		for dy in range(-1, 2):
-			for dx in range(-1, 2):
-				var nx = x + dx
-				var ny = y + dy
-				if nx >= 0 and nx < GRID_SIZE.x and ny >= 0 and ny < GRID_SIZE.y:
-					if can_cell_be_damaged(nx, ny):
-						var target_cell = grid[ny][nx]
-						var target_layer = target_cell["layers"][target_cell["current_layer"]]
-						var hammer_dmg = hammer_damage.get(target_layer["type"], 0)
-						if hammer_dmg > 0:
-							damage_applied = true
-							target_layer["durability"] = max(0, target_layer["durability"] - hammer_dmg)
-							update_cell_visual(nx, ny)
-							cells_affected += 1
+		# Hammer affects 3x3 area with + shape pattern (center/sides 100%, corners 50%)
+		var hammer_positions = ToolLogic.get_hammer_positions(x, y)
 		
-		# Calculate hammer durability cost (base + per-cell, capped at max)
+		var cells_affected = 0
+		for pos_data in hammer_positions:
+			var nx = pos_data.pos.x
+			var ny = pos_data.pos.y
+			var multiplier = pos_data.multiplier
+			
+			if nx >= 0 and nx < GRID_SIZE.x and ny >= 0 and ny < GRID_SIZE.y:
+				if can_cell_be_damaged(nx, ny):
+					var target_cell = grid[ny][nx]
+					var target_layer = target_cell["layers"][target_cell["current_layer"]]
+					var base_damage = hammer_damage.get(target_layer["type"], 0)
+					var actual_damage = int(base_damage * multiplier)
+					
+					if actual_damage > 0:
+						damage_applied = true
+						target_layer["durability"] = max(0, target_layer["durability"] - actual_damage)
+						update_cell_visual(nx, ny)
+						cells_affected += 1
+						
+						# Check if layer is destroyed
+						if target_layer["durability"] <= 0:
+							# Mark stone as broken if we just destroyed a stone layer
+							if target_layer["type"] == LayerType.STONE:
+								target_cell["stone_broken"] = true
+							
+							# Move to next layer if available
+							if target_cell["current_layer"] < target_cell["layers"].size() - 1:
+								target_cell["current_layer"] += 1
+								# If next layer is treasure, reveal it
+								if target_cell["layers"][target_cell["current_layer"]]["type"] == LayerType.TREASURE:
+									reveal_treasure(nx, ny)
+								update_cell_visual(nx, ny)
+		
+		# Calculate hammer durability cost (base + per-cell affected)
 		if not dev_mode_unlimited_durability and damage_applied:
-			var hammer_cost = min(
-				hammer_base_cost_percent + (cells_affected - 1) * hammer_per_cell_cost_percent,
-				hammer_max_cost_percent
-			)
+			var hammer_cost = ToolLogic.compute_hammer_cost(hammer_base_cost_percent, cells_affected, hammer_per_cell_cost_percent, hammer_max_cost_percent)
 			current_durability -= hammer_cost
 	
 	# Update UI and check for game over if damage was applied
@@ -1251,22 +1096,11 @@ func update_durability_display() -> void:
 	if durability_label:
 		durability_label.text = "Durability: %d" % current_durability
 
-# Clean up the results overlay if it exists
+# Clean up the results overlay if it exists (delegate to MiningUI)
 func cleanup_results_overlay():
 	if not is_inside_tree():
 		return
-		
-	# Find the results canvas in our siblings
-	var parent = get_parent()
-	if parent:
-		var existing_overlay = parent.get_node_or_null("ResultsCanvasLayer")
-		if existing_overlay and is_instance_valid(existing_overlay):
-			existing_overlay.queue_free()
-			existing_overlay = null
-	# Also clean up any direct children that might be left
-	for child in get_children():
-		if child.name == "ResultsCanvasLayer" and is_instance_valid(child):
-			child.queue_free()
+	MiningUI.cleanup_results_overlay(self)
 
 # End the game and display results
 func end_game():
@@ -1311,178 +1145,9 @@ func end_game():
 	
 	# Clean up any existing overlay first
 	cleanup_results_overlay()
-	
-	# Get viewport info first
-	var viewport = get_viewport()
-	var viewport_size = viewport.get_visible_rect().size if viewport else Vector2(1280, 720)
-	
-	# Create a new CanvasLayer for the results overlay
-	var results_canvas = CanvasLayer.new()
-	results_canvas.layer = 200  # Even higher than our main canvas
-	results_canvas.name = "ResultsCanvasLayer"
-	
-	# Create the overlay control
-	var overlay = Control.new()
-	overlay.name = "ResultsOverlay"
-	
-	# Set up the overlay to cover the entire screen
-	overlay.set_anchors_preset(Control.PRESET_FULL_RECT, true)
-	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	
-	# Add overlay to the canvas layer
-	results_canvas.add_child(overlay)
-	
-	# Add the canvas layer to the scene tree
-	add_sibling(results_canvas, true)  # Add as sibling to our canvas
-	
-	# Wait for the next frame to ensure proper sizing
-	await get_tree().process_frame
 
-	# Create a semi-transparent background panel that fills the screen
-	var background = ColorRect.new()
-	background.anchor_right = 1.0
-	background.anchor_bottom = 1.0
-	background.color = Color(0, 0, 0, 0.7)  # Semi-transparent black
-	background.mouse_filter = Control.MOUSE_FILTER_STOP
-	overlay.add_child(background)
-
-	# Create a container that will hold our centered content
-	var container = Control.new()
-	container.anchor_right = 1.0
-	container.anchor_bottom = 1.0
-	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	container.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	overlay.add_child(container)
-	
-	# Main panel with fixed size
-	var panel = PanelContainer.new()
-	panel.size = Vector2(500, 400)
-	panel.position = (viewport_size - panel.size) * 0.5  # Center the panel
-	
-	# Add style to the panel
-	var stylebox = StyleBoxFlat.new()
-	stylebox.bg_color = Color(0.1, 0.1, 0.15)
-	stylebox.border_width_bottom = 2
-	stylebox.border_width_left = 2
-	stylebox.border_width_right = 2
-	stylebox.border_width_top = 2
-	stylebox.border_color = Color(0.3, 0.3, 0.4)
-	stylebox.corner_radius_top_left = 10
-	stylebox.corner_radius_top_right = 10
-	stylebox.corner_radius_bottom_right = 10
-	stylebox.corner_radius_bottom_left = 10
-	panel.add_theme_stylebox_override("panel", stylebox)
-	
-	container.add_child(panel)
-	
-	# Create main container with margins
-	var margin_container = MarginContainer.new()
-	margin_container.anchor_right = 1.0
-	margin_container.anchor_bottom = 1.0
-	margin_container.add_theme_constant_override("margin_left", 20)
-	margin_container.add_theme_constant_override("margin_top", 20)
-	margin_container.add_theme_constant_override("margin_right", 20)
-	margin_container.add_theme_constant_override("margin_bottom", 20)
-	panel.add_child(margin_container)
-	
-	# Vertical box for content
-	var vbox = VBoxContainer.new()
-	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 20)
-	margin_container.add_child(vbox)
-	
-	# Add game over label
-	var game_over_label = Label.new()
-	game_over_label.text = "Mining Complete!"
-	game_over_label.add_theme_font_size_override("font_size", 42)
-	game_over_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	game_over_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	game_over_label.add_theme_color_override("font_color", Color(1, 1, 1))
-	vbox.add_child(game_over_label)
-	
-	# Add divider
-	var divider = ColorRect.new()
-	divider.custom_minimum_size = Vector2(0, 2)
-	divider.color = Color(0.3, 0.3, 0.4)
-	divider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vbox.add_child(divider)
-	
-	# Add results container with some spacing
-	var results_container = VBoxContainer.new()
-	results_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	results_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	results_container.add_theme_constant_override("separation", 15)
-	vbox.add_child(results_container)
-	
-	# Add results labels with better formatting
-	var treasures_found_label = Label.new()
-	treasures_found_label.text = "Treasures Found: %d" % self.revealed_count
-	treasures_found_label.add_theme_font_size_override("font_size", 28)
-	treasures_found_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	treasures_found_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1.0))
-	results_container.add_child(treasures_found_label)
-	
-	var total_value_label = Label.new()
-	total_value_label.text = "Total Value: %d" % self.total_value
-	total_value_label.add_theme_font_size_override("font_size", 32)
-	total_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	total_value_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.3))
-	results_container.add_child(total_value_label)
-	
-	# Add exit button container
-	var button_container = HBoxContainer.new()
-	button_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button_container.add_spacer(true)
-	
-	# Add exit button with better styling
-	var exit_button = Button.new()
-	exit_button.name = "ExitButton"
-	exit_button.custom_minimum_size = Vector2(200, 50)
-	exit_button.text = "Return to Game"
-	wexit_button.add_theme_font_size_override("font_size", 24)
-	
-	# Style the button
-	var normal_style = StyleBoxFlat.new()
-	normal_style.bg_color = Color(0.2, 0.6, 0.9)
-	normal_style.corner_radius_top_left = 5
-	normal_style.corner_radius_top_right = 5
-	normal_style.corner_radius_bottom_right = 5
-	normal_style.corner_radius_bottom_left = 5
-	
-	var hover_style = normal_style.duplicate()
-	hover_style.bg_color = Color(0.3, 0.7, 1.0)
-	
-	var pressed_style = normal_style.duplicate()
-	pressed_style.bg_color = Color(0.1, 0.5, 0.8)
-	
-	exit_button.add_theme_stylebox_override("normal", normal_style)
-	exit_button.add_theme_stylebox_override("hover", hover_style)
-	exit_button.add_theme_stylebox_override("pressed", pressed_style)
-	exit_button.add_theme_color_override("font_color", Color(1, 1, 1))
-	exit_button.add_theme_color_override("font_hover_color", Color(1, 1, 1))
-	exit_button.add_theme_color_override("font_pressed_color", Color(0.9, 0.9, 0.9))
-	
-	exit_button.pressed.connect(_on_exit_button_pressed)
-	button_container.add_child(exit_button)
-	button_container.add_spacer(true)
-	vbox.add_child(button_container)
-	
-	# Set focus and input handling
-	exit_button.mouse_filter = Control.MOUSE_FILTER_STOP
-	exit_button.z_index = 1001
-	exit_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	if is_inside_tree():
-		exit_button.call_deferred("grab_focus")
-	exit_button.process_mode = Node.PROCESS_MODE_ALWAYS
-
-	# Move overlay to front and ensure proper sizing
-	if is_instance_valid(overlay):
-		overlay.set_anchors_preset(Control.PRESET_FULL_RECT, true)
-		overlay.size = viewport_size
-		# Set a high z-index to ensure it's on top
-		overlay.z_index = 1000
+	# Create results overlay via UI helper
+	await MiningUI.create_results_overlay(self, self.revealed_count, self.total_value, Callable(self, "_on_exit_button_pressed"))
 
 	# Show the system cursor for the exit button
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
