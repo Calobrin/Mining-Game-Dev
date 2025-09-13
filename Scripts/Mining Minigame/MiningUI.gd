@@ -269,7 +269,7 @@ static func create_results_overlay(host: Node, revealed_count: int, total_value:
     var normal_style := StyleBoxFlat.new()
     normal_style.bg_color = Color(0.2, 0.6, 0.9)
     normal_style.corner_radius_top_left = 5
-    normal_style.corner_radius_top_right = 5git 
+    normal_style.corner_radius_top_right = 5
     normal_style.corner_radius_bottom_right = 5
     normal_style.corner_radius_bottom_left = 5
 
