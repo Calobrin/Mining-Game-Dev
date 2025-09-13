@@ -8,22 +8,6 @@
 
 [node name="MiningMinigame" type="CanvasLayer"]
 script = ExtResource("1_yyqqf")
-use_fixed_cell_size = null
-fixed_cell_size = null
-overlay_width_percentage = null
-overlay_height_percentage = null
-min_cell_size = null
-grid_backdrop_color = null
-show_cell_borders = null
-difficulty = null
-rewards_multiplier = null
-dev_mode_unlimited_durability = null
-min_treasures = null
-max_treasures = null
-pickaxe_base_cost = null
-hammer_base_cost_percent = null
-hammer_per_cell_cost_percent = null
-hammer_max_cost_percent = null
 dirt_texture = ExtResource("2_5gflm")
 stone_texture = ExtResource("3_ef7o8")
 
