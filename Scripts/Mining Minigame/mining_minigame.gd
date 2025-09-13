@@ -7,6 +7,7 @@ class_name MiningMinigame
 # Signals
 # =========================================================================
 signal minigame_closed(treasures_found: int, total_value: int)
+signal minigame_closed_with_state(treasures_found: int, total_value: int, was_completed: bool, node_id: int, snapshot: Dictionary)
 
 # =========================================================================
 # Constants and configuration
@@ -26,7 +27,7 @@ const COLOR_TREASURE_METAL = Color(0.95, 0.55, 0.20)
 const COLOR_TREASURE_GEM = Color(0.60, 0.85, 1.00)
 const COLOR_BORDER = Color(0.3, 0.3, 0.3)
 
-const ToolLogic = preload("res://Scripts/Mining Minigame/ToolLogic.gd")
+# Using global ToolLogic (from class_name in ToolLogic.gd); avoid local preload to prevent shadowing
 
 # Grid size
 const GRID_SIZE = Vector2i(17, 10)
@@ -52,6 +53,9 @@ var current_tool = ToolType.PICKAXE
 @export var difficulty: int = 1
 @export var rewards_multiplier: float = 1.0
 @export var dev_mode_unlimited_durability: bool = false
+@export var node_id: int = -1
+var was_completed: bool = false
+@export var auto_start: bool = true
 
 # Grid data
 var grid = []
@@ -150,8 +154,9 @@ func _ready():
 	$"MainContainer/CloseButton".pressed.connect(func(): close_minigame())
 	
 	# Start a new game (this will handle grid initialization, durability, and treasures)
-	print("DEBUG: Starting new game from _ready()...")
-	start_game()
+	if auto_start:
+		print("DEBUG: Starting new game from _ready()...")
+		start_game()
 
 # Initialize the grid with layered structure using cluster-based stone generation
 func init_grid():
@@ -525,6 +530,7 @@ func start_game():
 	
 	# Reset game state
 	game_over = false
+	was_completed = false
 	
 	# Clear any existing grid
 	for child in $MainContainer/MainGameArea/GridContainer.get_children():
@@ -566,7 +572,8 @@ func start_game():
 	var treasure_count = randi_range(min_treasures, max_treasures)
 	place_treasures(treasure_count)
 	
-	# Initialize tool selection (highlight default pickaxe)
+	# Initialize tool selection (default to pickaxe on open)
+	current_tool = ToolType.PICKAXE
 	set_current_tool(current_tool)
 	
 	# Initialize durability
@@ -953,9 +960,8 @@ func _input(event):
 	if game_over:
 		return
 			
-	# Toggle dev mode with Ctrl+Shift+D (local flag)
-	if event is InputEventKey and event.pressed and event.keycode == KEY_D and \
-	   event.ctrl_pressed and event.shift_pressed:
+	# Toggle dev mode with F1 only (guard against key repeat)
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F1:
 		dev_mode_unlimited_durability = !dev_mode_unlimited_durability
 		print("DEV MODE:", "ON" if dev_mode_unlimited_durability else "OFF")
 		get_viewport().set_input_as_handled()
@@ -1016,7 +1022,9 @@ func try_mine_cell(x: int, y: int) -> bool:
 					
 					if actual_damage > 0:
 						damage_applied = true
-						target_layer["durability"] = max(0, target_layer["durability"] - actual_damage)
+						target_layer["durability"] -= actual_damage
+						if target_layer["durability"] <= 0:
+							target_layer["revealed"] = true
 						update_cell_visual(nx, ny)
 						pickaxe_cells_affected += 1
 						
@@ -1058,7 +1066,9 @@ func try_mine_cell(x: int, y: int) -> bool:
 					
 					if actual_damage > 0:
 						damage_applied = true
-						target_layer["durability"] = max(0, target_layer["durability"] - actual_damage)
+						target_layer["durability"] -= actual_damage
+						if target_layer["durability"] <= 0:
+							target_layer["revealed"] = true
 						update_cell_visual(nx, ny)
 						cells_affected += 1
 						
@@ -1087,6 +1097,9 @@ func try_mine_cell(x: int, y: int) -> bool:
 		if current_durability <= 0 and not dev_mode_unlimited_durability:
 			current_durability = 0
 			end_game()
+		# Also check if all cells are excavated (works even in dev mode)
+		elif not game_over:
+			check_complete_excavation()
 	
 	return damage_applied
 
@@ -1108,6 +1121,7 @@ func end_game():
 		return  # Already ended
 		
 	game_over = true
+	was_completed = true
 	
 	# Disable input processing
 	set_process_input(false)
@@ -1180,13 +1194,20 @@ func close_minigame():
 	# Make sure cursor is visible
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	
-	# Emit signal with results
+	# Prepare snapshot for persistence
+	var snapshot := create_state_snapshot()
+
+	# Emit signals with results (new enriched signal + legacy for compatibility)
 	if is_inside_tree() and has_signal("minigame_closed"):
 		var _connections = get_signal_connection_list("minigame_closed")
 		if _connections.size() == 0:
 			print("Warning: minigame_closed signal has no connections")
 		else:
 			emit_signal("minigame_closed", revealed_count, total_value)
+
+	# New signal carrying full state for session persistence
+	if is_inside_tree() and has_signal("minigame_closed_with_state"):
+		emit_signal("minigame_closed_with_state", revealed_count, total_value, was_completed, node_id, snapshot)
 	
 	# Use call_deferred to safely remove from tree
 	call_deferred("_safe_remove_minigame")
@@ -1258,3 +1279,218 @@ func create_cell_style_box(bg_color: Color) -> StyleBoxFlat:
 	style_box.border_width_bottom = 1
 	style_box.border_color = Color(COLOR_BORDER.r, COLOR_BORDER.g, COLOR_BORDER.b, BORDER_OPACITY)
 	return style_box
+
+# =========================================================================
+# PERSISTENCE: Snapshot and Restore
+# =========================================================================
+
+func _get_item_id_safe(treasure_data) -> String:
+	if treasure_data == null:
+		return ""
+	if typeof(treasure_data) == TYPE_DICTIONARY:
+		return String(treasure_data.get("id", ""))
+	# Try common property access on objects
+	if "id" in treasure_data:
+		return String(treasure_data.id)
+	return ""
+
+func _resolve_item_by_id(id: String):
+	if id == "":
+		return null
+	var db = get_node_or_null("/root/MiningItemDatabase")
+	if db and db.has_method("get_item_by_id"):
+		return db.get_item_by_id(id)
+	return null
+
+# Build a serializable snapshot of the current game state
+func create_state_snapshot() -> Dictionary:
+	var grid_copy := []
+	for y in range(GRID_SIZE.y):
+		var row := []
+		for x in range(GRID_SIZE.x):
+			var cell: Dictionary = grid[y][x]
+			var layers_snap := []
+			for li in range(cell["layers"].size()):
+				var lyr: Dictionary = cell["layers"][li]
+				var snap := {
+					"type": lyr.get("type", LayerType.EMPTY),
+					"durability": lyr.get("durability", 0),
+					"revealed": lyr.get("revealed", false)
+				}
+				# Store treasure id if present
+				if lyr.has("treasure") and lyr["treasure"] != null:
+					snap["treasure_id"] = _get_item_id_safe(lyr["treasure"])
+				layers_snap.append(snap)
+			row.append({
+				"layers": layers_snap,
+				"current_layer": cell.get("current_layer", 0),
+				"had_stone": cell.get("had_stone", false),
+				"stone_broken": cell.get("stone_broken", false)
+			})
+		grid_copy.append(row)
+
+	var treasures_snap := []
+	for t in treasures:
+		var placed = t.get("placed_treasure", null)
+		if placed == null:
+			continue
+		var item_id := _get_item_id_safe(placed.treasure_data)
+		var gp_list := []
+		for gp in placed.grid_positions:
+			gp_list.append(Vector2i(gp.x, gp.y))
+		treasures_snap.append({
+			"top_left": Vector2i(placed.top_left.x, placed.top_left.y),
+			"size": Vector2i(placed.size.x, placed.size.y),
+			"grid_positions": gp_list,
+			"item_id": item_id
+		})
+
+	return {
+		"version": 1,
+		"node_id": node_id,
+		"grid_size": Vector2i(GRID_SIZE.x, GRID_SIZE.y),
+		"grid": grid_copy,
+		"treasures": treasures_snap,
+		"current_durability": current_durability,
+		"current_tool": current_tool,
+		"game_over": game_over,
+		"was_completed": was_completed,
+		"revealed_count": revealed_count,
+		"total_value": total_value
+	}
+
+# Restore the game from a snapshot
+func init_from_state(state: Dictionary) -> void:
+	# Basic guards
+	if state.is_empty():
+		start_game()
+		return
+
+	show()
+	set_process_input(true)
+	set_process_unhandled_input(true)
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+	game_over = false
+	was_completed = false
+
+	# Clear existing grid visuals
+	for child in $MainContainer/MainGameArea/GridContainer.get_children():
+		child.queue_free()
+
+	# Recreate container/backdrop sizing like start_game()
+	var gridc_back := $MainContainer/MainGameArea/GridContainer
+	if gridc_back:
+		var backdrop := gridc_back.get_node_or_null("GridBackdrop")
+		if grid_backdrop_color.a <= 0.001:
+			if backdrop:
+				backdrop.queue_free()
+		else:
+			if backdrop == null:
+				var cr := ColorRect.new()
+				cr.name = "GridBackdrop"
+				gridc_back.add_child(cr)
+				gridc_back.move_child(cr, 0)
+			var cell_sz := get_actual_cell_size()
+			gridc_back.custom_minimum_size = Vector2(GRID_SIZE.x * cell_sz.x, GRID_SIZE.y * cell_sz.y)
+			var bd: ColorRect = gridc_back.get_node_or_null("GridBackdrop")
+			if bd:
+				bd.position = Vector2.ZERO
+				bd.size = gridc_back.custom_minimum_size
+				bd.color = grid_backdrop_color
+				bd.z_as_relative = true
+				bd.z_index = -100
+				bd.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	# Load grid from snapshot
+	grid = []
+	var snap_grid: Array = state.get("grid", [])
+	for y in range(GRID_SIZE.y):
+		var row := []
+		if y < snap_grid.size():
+			var srow: Array = snap_grid[y]
+			for x in range(GRID_SIZE.x):
+				var cell_dict := {
+					"layers": [
+						{"type": LayerType.EMPTY, "durability": 0, "revealed": false},
+						{"type": LayerType.EMPTY, "durability": 0, "revealed": false},
+						{"type": LayerType.EMPTY, "durability": 0, "revealed": false}
+					],
+					"current_layer": 0,
+					"had_stone": false,
+					"stone_broken": false
+				}
+				if x < srow.size():
+					var scell: Dictionary = srow[x]
+					var slayers: Array = scell.get("layers", [])
+					for li in range(min(3, slayers.size())):
+						var sl: Dictionary = slayers[li]
+						cell_dict["layers"][li]["type"] = sl.get("type", LayerType.EMPTY)
+						cell_dict["layers"][li]["durability"] = sl.get("durability", 0)
+						cell_dict["layers"][li]["revealed"] = sl.get("revealed", false)
+						# We do not store complex treasure objects in the grid; visuals are driven by treasures list
+					cell_dict["current_layer"] = scell.get("current_layer", 0)
+					cell_dict["had_stone"] = scell.get("had_stone", false)
+					cell_dict["stone_broken"] = scell.get("stone_broken", false)
+				row.append(cell_dict)
+		grid.append(row)
+
+	# Rebuild visuals
+	create_grid_visuals()
+
+	# Reconstruct treasures list
+	treasures = []
+	var tlist: Array = state.get("treasures", [])
+	for tsnap in tlist:
+		var item_id: String = String(tsnap.get("item_id", ""))
+		var item = _resolve_item_by_id(item_id)
+		var top_left: Vector2i = tsnap.get("top_left", Vector2i.ZERO)
+		var size: Vector2i = tsnap.get("size", Vector2i(1,1))
+		var placed = TreasureGenerator.PlacedTreasure.new(item, top_left, size)
+		# Ensure grid_positions exactly match snapshot
+		placed.grid_positions.clear()
+		for gp in tsnap.get("grid_positions", []):
+			placed.grid_positions.append(Vector2i(gp.x, gp.y))
+		treasures.append({
+			"visual": null,
+			"placed_treasure": placed,
+			"revealed": false
+		})
+
+	# Create visuals for any crystals/gems that have revealed treasure cells
+	var cell_size_v := get_actual_cell_size()
+	var parent_container_v: Control = $MainContainer/MainGameArea/GridContainer
+	for t in treasures:
+		var placed_treasure = t["placed_treasure"]
+		var any_revealed := false
+		for gp in placed_treasure.grid_positions:
+			var cx = gp.x
+			var cy = gp.y
+			var has_stone = grid[cy][cx]["layers"][0]["type"] == LayerType.STONE
+			var treasure_layer = 2 if has_stone else 1
+			if grid[cy][cx]["layers"][treasure_layer]["revealed"]:
+				any_revealed = true
+				break
+		if any_revealed and placed_treasure.visual_node == null and TreasureGenerator._is_crystals_gems(placed_treasure.treasure_data):
+			var visual_v := TreasureGenerator.create_treasure_visual(placed_treasure, cell_size_v, parent_container_v)
+			if visual_v != null:
+				visual_v.position = calculate_cell_position(placed_treasure.top_left.x, placed_treasure.top_left.y)
+				parent_container_v.add_child(visual_v)
+				parent_container_v.move_child(visual_v, parent_container_v.get_child_count() - 1)
+	normalize_grid_layering()
+
+	# IMPORTANT: Now that treasures have been reconstructed, force-refresh all cells so
+	# non-crystal treasure cells render their category color (this relies on 'treasures').
+	for y in range(GRID_SIZE.y):
+		for x in range(GRID_SIZE.x):
+			update_cell_visual(x, y)
+
+	# Restore simple state
+	current_durability = clamp(state.get("current_durability", max_durability), 0.0, max_durability)
+	update_durability_display()
+	# Default to pickaxe on resume and update UI highlight
+	current_tool = ToolType.PICKAXE
+	set_current_tool(current_tool)
+
+	# Announce open (optional)
+	Signals.emit_minigame_opened()

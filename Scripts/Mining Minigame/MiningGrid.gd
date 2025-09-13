@@ -2,7 +2,7 @@ class_name MiningGrid
 extends Node2D
 
 # Signals
-signal cell_clicked(x: int, y: int)
+#signal cell_clicked(x: int, y: int)
 signal treasure_revealed(treasure_data: Dictionary)
 
 # Dependencies

@@ -54,14 +54,26 @@ transform = Transform3D(0.413186, 0, -1.11031, 0, 0.721763, 0, 1.11031, 0, 0.413
 [node name="Mining Nodes" type="Node3D" parent="." index="6"]
 script = ExtResource("5_0w4ig")
 
-[node name="Mining Node" parent="Mining Nodes" index="0" instance=ExtResource("5_lptby")]
-transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -17.1324, 0.512777, 3.74966)
+[node name="Mining Node1" parent="Mining Nodes" index="0" instance=ExtResource("5_lptby")]
+transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -56.2605, -1.23644, 5.26117)
 
 [node name="Mining Node2" parent="Mining Nodes" index="1" instance=ExtResource("5_lptby")]
-transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -19.3568, 0.799748, -2.47621)
+transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -67.9226, 0.0925427, -8.91441)
 
 [node name="Mining Node3" parent="Mining Nodes" index="2" instance=ExtResource("5_lptby")]
-transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -26.9363, 1.2278, 3.19452)
+transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -90.304, 0.696855, -9.90419)
+
+[node name="Mining Node4" parent="Mining Nodes" index="3" instance=ExtResource("5_lptby")]
+transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -71.0626, 0, -22.766)
+
+[node name="Mining Node5" parent="Mining Nodes" index="4" instance=ExtResource("5_lptby")]
+transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -67.9055, 0, -33.7851)
+
+[node name="Mining Node6" parent="Mining Nodes" index="5" instance=ExtResource("5_lptby")]
+transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -69.885, -4.76837e-07, -41.9299)
+
+[node name="Mining Node7" parent="Mining Nodes" index="6" instance=ExtResource("5_lptby")]
+transform = Transform3D(0.6, 0, 0, 0, 0.6, 0, 0, 0, 0.6, -68.7172, -4.76837e-07, -53.9743)
 
 [editable path="Interactable Button"]
 [editable path="Player"]

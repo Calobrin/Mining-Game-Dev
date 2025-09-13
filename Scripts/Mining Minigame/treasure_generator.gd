@@ -18,7 +18,7 @@ const TREASURE_SIZES = [
 ]
 
 # Debug flag - set to false when using sprite assets instead of colored rectangles
-const SHOW_DEBUG_LABELS = true
+const SHOW_DEBUG_LABELS = false
 
 # Single placeholder texture for crystals/gems
 const CRYSTAL_TEX: Texture2D = preload("res://textures/image assets/crystal concept.png")

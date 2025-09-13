@@ -1,9 +1,9 @@
 extends Node
 
-# Configure how many mining nodes should be active
-@export var active_node_count: int = 2
-@export var node_groups: Array[String] = ["common", "uncommon", "rare"]
-@export var group_weights: Array[float] = [0.7, 0.25, 0.05]
+# Configure what fraction of mining nodes should be active this run
+@export_range(0.0, 1.0, 0.05) var min_active_ratio: float = 0.5
+@export_range(0.0, 1.0, 0.05) var max_active_ratio: float = 0.8
+@export var min_active_count_floor: int = 1
 
 # Dictionary to track active nodes by ID
 var active_nodes = {}
@@ -11,6 +11,7 @@ var active_nodes = {}
 func _ready():
 	# Wait a frame to ensure all mining nodes are registered
 	await get_tree().process_frame
+	randomize()
 	randomize_active_nodes()
 
 # Call this when entering the mine to select random active nodes
@@ -26,8 +27,12 @@ func randomize_active_nodes():
 		print("No mining nodes found in the scene!")
 		return
 		
-	# Ensure we don't try to activate more nodes than exist
-	var nodes_to_activate = min(active_node_count, all_nodes.size())
+	# Decide how many to activate this run based on total count and configured ratio range
+	var total: int = all_nodes.size()
+	var lo: float = float(min(min_active_ratio, max_active_ratio))
+	var hi: float = float(max(min_active_ratio, max_active_ratio))
+	var chosen_ratio: float = randf_range(lo, hi)
+	var nodes_to_activate: int = clamp(int(round(total * chosen_ratio)), min_active_count_floor, total)
 	
 	# Shuffle the array to randomize selection
 	all_nodes.shuffle()
@@ -53,7 +58,7 @@ func randomize_active_nodes():
 		if not active_nodes.has(node_id):
 			node.deactivate()
 	
-	print("Activated " + str(activated) + " mining nodes")
+	print("Activated " + str(activated) + " mining nodes (" + str(total) + " total, ratio= " + str(chosen_ratio).substr(0,4) + ")")
 
 # Helper function to select index based on weights
 func weighted_random_index(weights: Array[float]) -> int:
