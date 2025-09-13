@@ -44,11 +44,6 @@ func randomize_active_nodes():
 		# Activate this node
 		active_nodes[node_id] = true
 		node.activate()
-		
-		# Randomly assign an ore type based on group weights
-		var group_index = weighted_random_index(group_weights)
-		if group_index < node_groups.size():
-			node.set_ore_group(node_groups[group_index])
 			
 		activated += 1
 		

@@ -4,7 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://idpgh2bb3r0t" path="res://Scenes/player/playernew.tscn" id="2_jqmv2"]
 [ext_resource type="PackedScene" uid="uid://b4x11wc33w26x" path="res://Scenes/interactable_button.tscn" id="3_16f8g"]
 [ext_resource type="PackedScene" uid="uid://ntn7tba50ogf" path="res://Scenes/spawnpoint.tscn" id="4_uratw"]
-[ext_resource type="Script" path="res://Scripts/World/mining_node_manager.gd" id="5_0w4ig"]
+[ext_resource type="Script" uid="uid://cfj0b7m23b6q1" path="res://Scripts/World/mining_node_manager.gd" id="5_0w4ig"]
 [ext_resource type="PackedScene" uid="uid://cvy7iljwh1a61" path="res://Scenes/Mining Node.tscn" id="5_lptby"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_l5ael"]
